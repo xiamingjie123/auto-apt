@@ -3,7 +3,7 @@ function normalizeIpProxyService(value = '') {
   const normalized = String(value || '').trim().toLowerCase();
   const enabledServices = Array.isArray(globalThis.IP_PROXY_ENABLED_SERVICES)
     ? globalThis.IP_PROXY_ENABLED_SERVICES
-    : [DEFAULT_IP_PROXY_SERVICE];
+    : ['711proxy', 'clash-verge'];
   if (enabledServices.includes(normalized)) {
     return normalized;
   }

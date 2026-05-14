@@ -213,6 +213,11 @@ test('sidepanel fallback proxy service whitelist includes clash-verge', () => {
   assert.match(source, /const services = \['711proxy', 'clash-verge', 'lumiproxy', 'iproyal', 'omegaproxy'\];/);
 });
 
+test('ip proxy panel service normalizer fallback includes clash-verge without global constant injection', () => {
+  const source = fs.readFileSync('sidepanel/ip-proxy-panel.js', 'utf8');
+  assert.match(source, /: \['711proxy', 'clash-verge'\];/);
+});
+
 test('711 fixed-account mode applies region and sticky session parameters', () => {
   const api = loadIpProxyCore();
   const pool = api.getAccountModeProxyPoolFromState({
