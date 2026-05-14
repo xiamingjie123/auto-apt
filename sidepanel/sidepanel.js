@@ -14047,6 +14047,14 @@ btnFiveSimCountryKeepPrimary?.addEventListener('click', () => {
   keepOnlyPrimaryFiveSimCountry();
 });
 
+inputFiveSimProduct?.addEventListener('blur', () => {
+  const normalized = normalizeFiveSimProductValue(inputFiveSimProduct.value || '');
+  inputFiveSimProduct.value = normalized || DEFAULT_FIVE_SIM_PRODUCT;
+  if (normalized && normalized !== DEFAULT_FIVE_SIM_PRODUCT && typeof showToast === 'function') {
+    showToast('5sim 产品代码通常保持 openai 即可；只有页面识别到 WhatsApp 通道时，流程才会临时自动切到 whatsapp。', 'warn', 2600);
+  }
+});
+
 btnNexSmsCountryMenu?.addEventListener('click', (event) => {
   event.preventDefault();
   const nextOpen = btnNexSmsCountryMenu.getAttribute('aria-expanded') !== 'true';

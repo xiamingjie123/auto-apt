@@ -1454,8 +1454,11 @@
             </div>
             <div class="data-row" id="row-five-sim-product" style="display:none;">
               <span class="data-label">产品代码</span>
-              <input type="text" id="input-five-sim-product" class="data-input mono"
-                placeholder="openai" />
+              <div class="data-inline hero-sms-country-stack">
+                <input type="text" id="input-five-sim-product" class="data-input mono"
+                  placeholder="openai" />
+                <span class="data-value hero-sms-country-note">默认保持 `openai`。当页面识别到当前国家实际走 WhatsApp 通道时，流程会临时自动改买 `whatsapp` 号码，不需要长期手填。</span>
+              </div>
             </div>
             <div class="data-row" id="row-five-sim-reuse-enabled" style="display:none;">
               <label class="checkbox-row">
