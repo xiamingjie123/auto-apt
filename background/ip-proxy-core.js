@@ -1455,8 +1455,8 @@ function buildIpProxyRuntimeStatePatch(mode = DEFAULT_IP_PROXY_MODE, runtime = {
 function getIpProxyCurrentEntryFromState(state = {}) {
   const mode = normalizeIpProxyMode(state?.ipProxyMode);
   const currentProvider = normalizeIpProxyProviderValue(state?.ipProxyService);
+  const runtime = getIpProxyRuntimeSnapshot(state, mode, currentProvider);
   if (isClashVergeProvider(currentProvider)) {
-    const runtime = getIpProxyRuntimeSnapshot(state, mode, provider);
     const pool = Array.isArray(runtime.pool) ? runtime.pool : [];
     if (!pool.length) {
       return null;
@@ -1467,10 +1467,9 @@ function getIpProxyCurrentEntryFromState(state = {}) {
   if (mode === 'api' && !isApiModeProxyConfigAvailable(state)) {
     return null;
   }
-  const runtime = getIpProxyRuntimeSnapshot(state, mode, provider);
   if (mode === 'account') {
     const hasAccountList = hasConfiguredAccountListEntries(state);
-    const accountPool = getAccountModeProxyPoolFromState(state, provider);
+    const accountPool = getAccountModeProxyPoolFromState(state, currentProvider);
     if (hasAccountList) {
       if (!accountPool.length) {
         return null;
@@ -1492,7 +1491,7 @@ function getIpProxyCurrentEntryFromState(state = {}) {
       password: String(state?.ipProxyPassword || ''),
       protocol: normalizeIpProxyProtocol(state?.ipProxyProtocol),
       region: '',
-      provider,
+      provider: currentProvider,
     };
     const inferredRegionFromUsername = inferRegionFromProxyUsername(entry.username);
     if (inferredRegionFromUsername) {
@@ -1505,7 +1504,7 @@ function getIpProxyCurrentEntryFromState(state = {}) {
     }
     const configuredRegion = String(state?.ipProxyRegion || '').trim();
     if (shouldApplyConfiguredRegionFallbackToEntry(entry, {
-      provider,
+      provider: currentProvider,
       configuredRegion,
       hasAccountList: false,
     })) {
@@ -1519,7 +1518,7 @@ function getIpProxyCurrentEntryFromState(state = {}) {
     const index = normalizeIpProxyCurrentIndex(runtime.index, 0) % pool.length;
     return pool[index];
   }
-  const fallback = normalizeProxyPoolEntries(runtime.current ? [runtime.current] : [], provider)[0];
+  const fallback = normalizeProxyPoolEntries(runtime.current ? [runtime.current] : [], currentProvider)[0];
   return fallback || null;
 }
 
@@ -3707,15 +3706,24 @@ function getNextIpProxyPoolIndex(currentIndex = 0, poolLength = 0, direction = '
 
 async function refreshIpProxyPool(options = {}) {
   const state = options.state || await getState();
-  const mode = normalizeIpProxyMode(options.mode || state?.ipProxyMode);
+  const provider = normalizeIpProxyProviderValue(state?.ipProxyService);
+  const isClashVerge = isClashVergeProvider(provider);
+  const mode = isClashVerge ? 'api' : normalizeIpProxyMode(options.mode || state?.ipProxyMode);
   const maxItems = Math.max(
     1,
     Math.min(500, Number(options.maxItems) || resolveIpProxyPoolTargetCountForMode(state, mode))
   );
-  const provider = normalizeIpProxyProviderValue(state?.ipProxyService);
   let pool = [];
 
-  if (mode === 'account') {
+  if (isClashVerge) {
+    const result = await listClashVergeProxyCandidates(state, {
+      timeoutMs: options.timeoutMs,
+    });
+    pool = Array.isArray(result?.candidates) ? result.candidates.slice(0, maxItems) : [];
+    if (!pool.length) {
+      throw new Error('Clash Verge 当前没有可切换的非中国区节点。');
+    }
+  } else if (mode === 'account') {
     pool = getAccountModeProxyPoolFromState(state, provider).slice(0, maxItems);
     if (!pool.length) {
       const parseFailureHint = getAccountListParseFailureHint(state, provider);
@@ -3753,7 +3761,7 @@ async function refreshIpProxyPool(options = {}) {
       ...state,
       ...updates,
     };
-    const shouldRebindSingleAccountEntry = mode === 'account' && pool.length <= 1;
+    const shouldRebindSingleAccountEntry = !isClashVerge && mode === 'account' && pool.length <= 1;
     proxyRouting = await applyIpProxySettingsFromState(
       applyState,
       shouldRebindSingleAccountEntry
@@ -3783,7 +3791,9 @@ async function refreshIpProxyPool(options = {}) {
 
 async function switchIpProxy(direction = 'next', options = {}) {
   const state = options.state || await getState();
-  const mode = normalizeIpProxyMode(options.mode || state?.ipProxyMode);
+  const provider = normalizeIpProxyProviderValue(state?.ipProxyService);
+  const isClashVerge = isClashVergeProvider(provider);
+  const mode = isClashVerge ? 'api' : normalizeIpProxyMode(options.mode || state?.ipProxyMode);
   if (mode === 'api' && !isApiModeProxyConfigAvailable(state)) {
     throw new Error('API 模式代理 URL 为空，请先填写代理 API 地址。');
   }
@@ -3791,17 +3801,21 @@ async function switchIpProxy(direction = 'next', options = {}) {
     1,
     Math.min(500, Number(options.maxItems) || resolveIpProxyPoolTargetCountForMode(state, mode))
   );
-  const provider = normalizeIpProxyProviderValue(state?.ipProxyService);
   const runtime = getIpProxyRuntimeSnapshot(state, mode, provider);
   let pool = [];
-  if (mode === 'account') {
+  if (isClashVerge) {
+    const result = await listClashVergeProxyCandidates(state, {
+      timeoutMs: options.timeoutMs,
+    });
+    pool = Array.isArray(result?.candidates) ? result.candidates.slice(0, maxItems) : [];
+  } else if (mode === 'account') {
     pool = getAccountModeProxyPoolFromState(state, provider).slice(0, maxItems);
   } else {
     pool = runtime.pool.slice(0, maxItems);
   }
 
   if (!pool.length) {
-    if (mode === 'api' && options.forceRefresh !== false) {
+    if ((mode === 'api' || isClashVerge) && options.forceRefresh !== false) {
       return refreshIpProxyPool({
         ...options,
         mode,
@@ -3832,7 +3846,7 @@ async function switchIpProxy(direction = 'next', options = {}) {
       ...state,
       ...updates,
     };
-    const shouldRebindSingleAccountEntry = mode === 'account' && pool.length <= 1;
+    const shouldRebindSingleAccountEntry = !isClashVerge && mode === 'account' && pool.length <= 1;
     proxyRouting = await applyIpProxySettingsFromState(
       applyState,
       shouldRebindSingleAccountEntry

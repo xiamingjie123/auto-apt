@@ -207,6 +207,70 @@ test('Clash Verge provider reads non-China candidates from selector and switches
   assert.deepStrictEqual(result.candidates.map((entry) => entry.nodeName), ['🇺🇸 美国-02', '🇯🇵 日本-01']);
 });
 
+test('Clash Verge refresh ignores legacy account mode and does not require host or port', async () => {
+  const providerSource = fs.readFileSync('background/ip-proxy-provider-711proxy.js', 'utf8');
+  const coreSource = fs.readFileSync('background/ip-proxy-core.js', 'utf8');
+  const calls = [];
+  const state = {
+    ipProxyEnabled: false,
+    ipProxyService: 'clash-verge',
+    ipProxyMode: 'account',
+    clashVergeControllerUrl: 'http://127.0.0.1:9097',
+    clashVergeSelector: 'ChatGPT',
+    clashVergeExcludeChina: true,
+  };
+  global.fetch = async () => ({
+    ok: true,
+    status: 200,
+    text: async () => JSON.stringify({
+      proxies: {
+        ChatGPT: {
+          now: '🇺🇸 美国-02',
+          all: ['🇺🇸 美国-02', '🇯🇵 日本-01', '🇨🇳 台湾-01'],
+        },
+      },
+    }),
+  });
+  const api = new Function(`
+const self = {};
+const chrome = {};
+const DEFAULT_IP_PROXY_SERVICE = '711proxy';
+const IP_PROXY_SERVICE_VALUES = ['711proxy', 'clash-verge', 'lumiproxy', 'iproyal', 'omegaproxy'];
+const IP_PROXY_ENABLED_SERVICE_VALUES = ['711proxy', 'clash-verge'];
+globalThis.IP_PROXY_ENABLED_SERVICE_VALUES = IP_PROXY_ENABLED_SERVICE_VALUES;
+const DEFAULT_IP_PROXY_MODE = 'account';
+const IP_PROXY_MODE_VALUES = ['api', 'account'];
+const DEFAULT_IP_PROXY_PROTOCOL = 'http';
+const IP_PROXY_PROTOCOL_VALUES = ['http', 'https', 'socks4', 'socks5'];
+const IP_PROXY_FETCH_TIMEOUT_MS = 20000;
+const IP_PROXY_SETTINGS_SCOPE = 'regular';
+const IP_PROXY_BYPASS_LIST = ['<local>', 'localhost', '127.0.0.1'];
+const IP_PROXY_ROUTE_ALL_TRAFFIC = true;
+const IP_PROXY_FORCE_DIRECT_HOST_PATTERNS = [];
+const IP_PROXY_FORCE_DIRECT_FALLBACK = 'PROXY 127.0.0.1:7897';
+const IP_PROXY_ACCOUNT_LIST_ENABLED = false;
+const IP_PROXY_TARGET_HOST_PATTERNS = ['openai.com', '*.openai.com', 'chatgpt.com', '*.chatgpt.com'];
+${providerSource}
+const transformIpProxyAccountEntryByProvider = self.transformIpProxyAccountEntryByProvider;
+${coreSource}
+const calls = [];
+let currentState = ${JSON.stringify(state)};
+globalThis.getState = async () => currentState;
+globalThis.setState = async (patch = {}) => {
+  calls.push(patch);
+  currentState = { ...currentState, ...patch };
+};
+globalThis.broadcastDataUpdate = () => {};
+return { refreshIpProxyPool, calls };
+`)();
+  const result = await api.refreshIpProxyPool({ state });
+  assert.equal(result.mode, 'api');
+  assert.equal(result.provider, 'clash-verge');
+  assert.equal(result.count, 2);
+  assert.equal(result.current?.host, 'clash-verge');
+  assert.ok(api.calls.some((patch) => Array.isArray(patch.ipProxyApiPool)));
+});
+
 test('sidepanel fallback proxy service whitelist includes clash-verge', () => {
   const source = fs.readFileSync('sidepanel/sidepanel.js', 'utf8');
   assert.match(source, /return \['clash-verge'\]\.includes\(normalized\)/);

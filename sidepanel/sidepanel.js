@@ -888,7 +888,7 @@ const NEX_SMS_FALLBACK_COUNTRY_ITEMS = Object.freeze([
 const DEFAULT_IP_PROXY_SERVICE = 'clash-verge';
 const SUPPORTED_IP_PROXY_SERVICES = ['clash-verge'];
 const IP_PROXY_ENABLED_SERVICES = ['clash-verge'];
-const DEFAULT_IP_PROXY_MODE = 'account';
+const DEFAULT_IP_PROXY_MODE = 'api';
 const SUPPORTED_IP_PROXY_MODES = ['api', 'account'];
 const DEFAULT_IP_PROXY_PROTOCOL = 'http';
 const SUPPORTED_IP_PROXY_PROTOCOLS = ['http', 'https', 'socks4', 'socks5'];
@@ -3177,7 +3177,7 @@ function collectSettingsPayload() {
     : (() => false);
   const getSelectedIpProxyModeSafe = typeof getSelectedIpProxyMode === 'function'
     ? getSelectedIpProxyMode
-    : (() => 'account');
+    : (() => 'api');
   const isIpProxyApiModeEnabledSafe = typeof isIpProxyApiModeAvailable === 'function'
     ? Boolean(isIpProxyApiModeAvailable())
     : (typeof IP_PROXY_API_MODE_ENABLED !== 'undefined' ? Boolean(IP_PROXY_API_MODE_ENABLED) : false);
@@ -3189,7 +3189,7 @@ function collectSettingsPayload() {
         : {};
       const services = ['clash-verge'];
       const fallbackProfile = {
-        mode: normalizeIpProxyModeSafe(fallbackState?.ipProxyMode || 'account'),
+        mode: normalizeIpProxyModeSafe(fallbackState?.ipProxyMode || 'api'),
         apiUrl: String(fallbackState?.ipProxyApiUrl || '').trim(),
         clashVergeControllerUrl: String(fallbackState?.clashVergeControllerUrl || '').trim(),
         clashVergeSecret: String(fallbackState?.clashVergeSecret || ''),
@@ -3290,12 +3290,14 @@ function collectSettingsPayload() {
     ? inputIpProxyRegion?.value
     : '';
   const selectedIpProxyService = normalizeIpProxyServiceSafe(
-    ipProxyServiceRawValue || latestState?.ipProxyService || '711proxy'
+    ipProxyServiceRawValue || latestState?.ipProxyService || 'clash-verge'
   );
   const selectedIpProxyModeRaw = normalizeIpProxyModeSafe(getSelectedIpProxyModeSafe());
-  const selectedIpProxyMode = (!isIpProxyApiModeEnabledSafe && selectedIpProxyModeRaw === 'api')
-    ? 'account'
-    : selectedIpProxyModeRaw;
+  const selectedIpProxyMode = selectedIpProxyService === 'clash-verge'
+    ? 'api'
+    : ((!isIpProxyApiModeEnabledSafe && selectedIpProxyModeRaw === 'api')
+      ? 'account'
+      : selectedIpProxyModeRaw);
   const currentIpProxyServiceProfile = {
     mode: selectedIpProxyMode,
     apiUrl: String(ipProxyApiUrlRawValue || '').trim(),

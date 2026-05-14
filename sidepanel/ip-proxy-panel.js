@@ -169,6 +169,12 @@ function isIpProxyAccountListAvailable() {
 }
 
 function normalizeIpProxyModeForCurrentRelease(value = '') {
+  const service = normalizeIpProxyService(
+    selectIpProxyService?.value || latestState?.ipProxyService || DEFAULT_IP_PROXY_SERVICE
+  );
+  if (service === 'clash-verge') {
+    return 'api';
+  }
   const normalized = normalizeIpProxyMode(value);
   if (!isIpProxyApiModeAvailable() && normalized === 'api') {
     return 'account';
@@ -420,8 +426,12 @@ function buildCurrentIpProxyServiceProfileFromInputs() {
   const selectedService = normalizeIpProxyService(
     selectIpProxyService?.value || latestState?.ipProxyService || DEFAULT_IP_PROXY_SERVICE
   );
-  const selectedMode = normalizeIpProxyMode(getSelectedIpProxyMode());
-  const effectiveMode = normalizeIpProxyModeForCurrentRelease(selectedMode);
+  const selectedMode = selectedService === 'clash-verge'
+    ? 'api'
+    : normalizeIpProxyMode(getSelectedIpProxyMode());
+  const effectiveMode = selectedService === 'clash-verge'
+    ? 'api'
+    : normalizeIpProxyModeForCurrentRelease(selectedMode);
   const rawRegion = String(inputIpProxyRegion?.value || '').trim();
   const finalRegion = resolveIpProxyRegionFromInputs({
     service: selectedService,
@@ -560,12 +570,23 @@ function setIpProxyEnabled(enabled) {
 }
 
 function getSelectedIpProxyMode() {
+  const service = normalizeIpProxyService(
+    selectIpProxyService?.value || latestState?.ipProxyService || DEFAULT_IP_PROXY_SERVICE
+  );
+  if (service === 'clash-verge') {
+    return 'api';
+  }
   const activeButton = ipProxyModeButtons.find((button) => button.classList.contains('is-active'));
   return normalizeIpProxyModeForCurrentRelease(activeButton?.dataset?.ipProxyMode || DEFAULT_IP_PROXY_MODE);
 }
 
 function setIpProxyMode(mode) {
-  const nextMode = normalizeIpProxyModeForCurrentRelease(mode);
+  const service = normalizeIpProxyService(
+    selectIpProxyService?.value || latestState?.ipProxyService || DEFAULT_IP_PROXY_SERVICE
+  );
+  const nextMode = service === 'clash-verge'
+    ? 'api'
+    : normalizeIpProxyModeForCurrentRelease(mode);
   ipProxyModeButtons.forEach((button) => {
     const buttonMode = normalizeIpProxyMode(button?.dataset?.ipProxyMode || DEFAULT_IP_PROXY_MODE);
     button.classList.toggle('is-active', buttonMode === nextMode);
@@ -1308,7 +1329,7 @@ function updateIpProxyUI(state = latestState) {
     rowIpProxyService.style.display = showSettings ? '' : 'none';
   }
   if (rowIpProxyMode) {
-    rowIpProxyMode.style.display = showSettings ? '' : 'none';
+    rowIpProxyMode.style.display = showSettings && !isClashVerge ? '' : 'none';
   }
   if (rowIpProxyLayout) {
     rowIpProxyLayout.style.display = showSettings ? '' : 'none';
