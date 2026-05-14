@@ -207,6 +207,12 @@ test('Clash Verge provider reads non-China candidates from selector and switches
   assert.deepStrictEqual(result.candidates.map((entry) => entry.nodeName), ['🇺🇸 美国-02', '🇯🇵 日本-01']);
 });
 
+test('sidepanel fallback proxy service whitelist includes clash-verge', () => {
+  const source = fs.readFileSync('sidepanel/sidepanel.js', 'utf8');
+  assert.match(source, /return \['711proxy', 'clash-verge', 'lumiproxy', 'iproyal', 'omegaproxy'\]\.includes\(normalized\)/);
+  assert.match(source, /const services = \['711proxy', 'clash-verge', 'lumiproxy', 'iproyal', 'omegaproxy'\];/);
+});
+
 test('711 fixed-account mode applies region and sticky session parameters', () => {
   const api = loadIpProxyCore();
   const pool = api.getAccountModeProxyPoolFromState({

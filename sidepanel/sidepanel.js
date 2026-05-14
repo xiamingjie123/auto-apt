@@ -3068,7 +3068,7 @@ function collectSettingsPayload() {
     ? normalizeIpProxyService
     : ((value = '') => {
       const normalized = String(value || '').trim().toLowerCase();
-      return ['711proxy'].includes(normalized)
+      return ['711proxy', 'clash-verge', 'lumiproxy', 'iproyal', 'omegaproxy'].includes(normalized)
         ? normalized
         : '711proxy';
     });
@@ -3186,10 +3186,15 @@ function collectSettingsPayload() {
       const raw = (rawValue && typeof rawValue === 'object' && !Array.isArray(rawValue))
         ? rawValue
         : {};
-      const services = ['711proxy'];
+      const services = ['711proxy', 'clash-verge', 'lumiproxy', 'iproyal', 'omegaproxy'];
       const fallbackProfile = {
         mode: normalizeIpProxyModeSafe(fallbackState?.ipProxyMode || 'account'),
         apiUrl: String(fallbackState?.ipProxyApiUrl || '').trim(),
+        clashVergeControllerUrl: String(fallbackState?.clashVergeControllerUrl || '').trim(),
+        clashVergeSecret: String(fallbackState?.clashVergeSecret || ''),
+        clashVergeSelector: String(fallbackState?.clashVergeSelector || '').trim(),
+        clashVergeSelectedGroup: String(fallbackState?.clashVergeSelectedGroup || '').trim(),
+        clashVergeExcludeChina: fallbackState?.clashVergeExcludeChina !== false,
         accountList: normalizeIpProxyAccountListSafe(fallbackState?.ipProxyAccountList || ''),
         accountSessionPrefix: normalizeIpProxyAccountSessionPrefixSafe(fallbackState?.ipProxyAccountSessionPrefix || ''),
         accountLifeMinutes: normalizeIpProxyAccountLifeMinutesSafe(fallbackState?.ipProxyAccountLifeMinutes || ''),
