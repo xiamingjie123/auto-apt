@@ -885,9 +885,9 @@ const NEX_SMS_FALLBACK_COUNTRY_ITEMS = Object.freeze([
   { id: 6, label: 'Indonesia (#6)', searchText: 'Indonesia 6 ID' },
   { id: 7, label: 'Malaysia (#7)', searchText: 'Malaysia 7 MY' },
 ]);
-const DEFAULT_IP_PROXY_SERVICE = '711proxy';
-const SUPPORTED_IP_PROXY_SERVICES = ['711proxy', 'clash-verge', 'lumiproxy', 'iproyal', 'omegaproxy'];
-const IP_PROXY_ENABLED_SERVICES = ['711proxy', 'clash-verge'];
+const DEFAULT_IP_PROXY_SERVICE = 'clash-verge';
+const SUPPORTED_IP_PROXY_SERVICES = ['clash-verge'];
+const IP_PROXY_ENABLED_SERVICES = ['clash-verge'];
 const DEFAULT_IP_PROXY_MODE = 'account';
 const SUPPORTED_IP_PROXY_MODES = ['api', 'account'];
 const DEFAULT_IP_PROXY_PROTOCOL = 'http';
@@ -3069,9 +3069,9 @@ function collectSettingsPayload() {
     ? normalizeIpProxyService
     : ((value = '') => {
       const normalized = String(value || '').trim().toLowerCase();
-      return ['711proxy', 'clash-verge', 'lumiproxy', 'iproyal', 'omegaproxy'].includes(normalized)
+      return ['clash-verge'].includes(normalized)
         ? normalized
-        : '711proxy';
+        : 'clash-verge';
     });
   const normalizeIpProxyModeSafe = typeof normalizeIpProxyMode === 'function'
     ? normalizeIpProxyMode
@@ -3187,7 +3187,7 @@ function collectSettingsPayload() {
       const raw = (rawValue && typeof rawValue === 'object' && !Array.isArray(rawValue))
         ? rawValue
         : {};
-      const services = ['711proxy', 'clash-verge', 'lumiproxy', 'iproyal', 'omegaproxy'];
+      const services = ['clash-verge'];
       const fallbackProfile = {
         mode: normalizeIpProxyModeSafe(fallbackState?.ipProxyMode || 'account'),
         apiUrl: String(fallbackState?.ipProxyApiUrl || '').trim(),

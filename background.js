@@ -372,9 +372,9 @@ const DEFAULT_SUB2API_GROUP_NAMES = [
   CONTRIBUTION_SUB2API_PLUS_GROUP_NAME,
 ];
 const DEFAULT_SUB2API_REDIRECT_URI = 'http://localhost:1455/auth/callback';
-const DEFAULT_IP_PROXY_SERVICE = '711proxy';
-const IP_PROXY_SERVICE_VALUES = ['711proxy', 'clash-verge', 'lumiproxy', 'iproyal', 'omegaproxy'];
-const IP_PROXY_ENABLED_SERVICE_VALUES = ['711proxy', 'clash-verge'];
+const DEFAULT_IP_PROXY_SERVICE = 'clash-verge';
+const IP_PROXY_SERVICE_VALUES = ['clash-verge'];
+const IP_PROXY_ENABLED_SERVICE_VALUES = ['clash-verge'];
 const DEFAULT_IP_PROXY_MODE = 'account';
 const IP_PROXY_MODE_VALUES = ['api', 'account'];
 const DEFAULT_IP_PROXY_PROTOCOL = 'http';

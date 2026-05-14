@@ -209,13 +209,13 @@ test('Clash Verge provider reads non-China candidates from selector and switches
 
 test('sidepanel fallback proxy service whitelist includes clash-verge', () => {
   const source = fs.readFileSync('sidepanel/sidepanel.js', 'utf8');
-  assert.match(source, /return \['711proxy', 'clash-verge', 'lumiproxy', 'iproyal', 'omegaproxy'\]\.includes\(normalized\)/);
-  assert.match(source, /const services = \['711proxy', 'clash-verge', 'lumiproxy', 'iproyal', 'omegaproxy'\];/);
+  assert.match(source, /return \['clash-verge'\]\.includes\(normalized\)/);
+  assert.match(source, /const services = \['clash-verge'\];/);
 });
 
 test('ip proxy panel service normalizer fallback includes clash-verge without global constant injection', () => {
   const source = fs.readFileSync('sidepanel/ip-proxy-panel.js', 'utf8');
-  assert.match(source, /: \['711proxy', 'clash-verge'\];/);
+  assert.match(source, /: \['clash-verge'\];/);
 });
 
 test('711 fixed-account mode applies region and sticky session parameters', () => {
