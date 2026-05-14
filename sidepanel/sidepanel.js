@@ -468,6 +468,7 @@ const fiveSimCountryMenuShell = document.getElementById('five-sim-country-menu-s
 const btnFiveSimCountryMenu = document.getElementById('btn-five-sim-country-menu');
 const fiveSimCountryMenu = document.getElementById('five-sim-country-menu');
 const btnFiveSimCountryClear = document.getElementById('btn-five-sim-country-clear');
+const btnFiveSimCountryKeepPrimary = document.getElementById('btn-five-sim-country-keep-primary');
 const selectNexSmsCountry = document.getElementById('select-nex-sms-country');
 const nexSmsCountryMenuShell = document.getElementById('nex-sms-country-menu-shell');
 const btnNexSmsCountryMenu = document.getElementById('btn-nex-sms-country-menu');
@@ -6468,6 +6469,36 @@ function removeFiveSimCountryFromOrder(code = '') {
   });
   markSettingsDirty(true);
   saveSettings({ silent: true }).catch(() => { });
+  return nextOrder;
+}
+
+function keepOnlyPrimaryFiveSimCountry() {
+  const primaryCode = normalizeFiveSimCountryCode(
+    fiveSimCountrySelectionOrder[0]
+    || selectFiveSimCountry?.value
+    || latestState?.fiveSimCountryId
+    || DEFAULT_FIVE_SIM_COUNTRY_ID,
+    DEFAULT_FIVE_SIM_COUNTRY_ID
+  );
+  if (!primaryCode) {
+    return [];
+  }
+  if (selectFiveSimCountry) {
+    Array.from(selectFiveSimCountry.options || []).forEach((option) => {
+      option.selected = normalizeFiveSimCountryCode(option.value, '') === primaryCode;
+    });
+  }
+  fiveSimCountrySelectionOrder = [primaryCode];
+  const nextOrder = syncFiveSimCountrySelectionOrderFromSelect({
+    enforceMax: true,
+    ensureDefault: true,
+    showLimitToast: false,
+  });
+  markSettingsDirty(true);
+  saveSettings({ silent: true }).catch(() => { });
+  if (typeof showToast === 'function') {
+    showToast(`已只保留主国家：${getFiveSimCountryOptionLabel(primaryCode) || primaryCode}`, 'success', 1800);
+  }
   return nextOrder;
 }
 
@@ -14011,6 +14042,9 @@ btnFiveSimCountryClear?.addEventListener('click', () => {
   if (typeof showToast === 'function') {
     showToast('已清空国家优先级。', 'info', 1800);
   }
+});
+btnFiveSimCountryKeepPrimary?.addEventListener('click', () => {
+  keepOnlyPrimaryFiveSimCountry();
 });
 
 btnNexSmsCountryMenu?.addEventListener('click', (event) => {
