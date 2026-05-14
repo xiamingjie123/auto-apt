@@ -835,7 +835,8 @@ const inputPhoneCodePollIntervalSeconds = { value: '6' };
 const inputPhoneCodePollMaxRounds = { value: '18' };
 const inputAccountRunHistoryHelperBaseUrl = { value: 'http://127.0.0.1:17373' };
 const DEFAULT_VERIFICATION_RESEND_COUNT = 4;
-const DEFAULT_PHONE_VERIFICATION_REPLACEMENT_LIMIT = 3;
+const PHONE_REPLACEMENT_LIMIT_UNLIMITED = 0;
+const DEFAULT_PHONE_VERIFICATION_REPLACEMENT_LIMIT = 0;
 const DEFAULT_PHONE_CODE_WAIT_SECONDS = 60;
 const DEFAULT_PHONE_CODE_TIMEOUT_WINDOWS = 2;
 const DEFAULT_PHONE_CODE_POLL_INTERVAL_SECONDS = 5;
@@ -852,7 +853,7 @@ const DEFAULT_HERO_SMS_REUSE_ENABLED = true;
 const HERO_SMS_ACQUIRE_PRIORITY_COUNTRY = 'country';
 const HERO_SMS_ACQUIRE_PRIORITY_PRICE = 'price';
 const DEFAULT_HERO_SMS_ACQUIRE_PRIORITY = HERO_SMS_ACQUIRE_PRIORITY_COUNTRY;
-const PHONE_REPLACEMENT_LIMIT_MIN = 1;
+const PHONE_REPLACEMENT_LIMIT_MIN = 0;
 const PHONE_REPLACEMENT_LIMIT_MAX = 20;
 const DEFAULT_HERO_SMS_COUNTRY_ID = 52;
 const DEFAULT_HERO_SMS_COUNTRY_LABEL = 'Thailand';
@@ -877,6 +878,7 @@ function getCloudflareDomainsFromState() { return { domains: [], activeDomain: '
 function normalizeCloudflareDomainValue(value) { return String(value || '').trim(); }
 function getCloudflareTempEmailDomainsFromState() { return { domains: [], activeDomain: '' }; }
 function normalizeCloudflareTempEmailDomainValue(value) { return String(value || '').trim(); }
+function formatFiveSimCountryDisplayLabel(id, englishValue, fallback) { return String(englishValue || id || fallback || '').trim(); }
 function getSelectedLocalCpaStep9Mode() { return 'submit'; }
 function getSelectedPlusPaymentMethod() { return 'paypal'; }
 function getSelectedMail2925Mode() { return 'provide'; }
@@ -947,7 +949,7 @@ return { collectSettingsPayload };
   assert.equal(payload.accountRunHistoryHelperBaseUrl, 'http://127.0.0.1:17373');
   assert.equal(payload.heroSmsApiKey, 'demo-key');
   assert.equal(payload.fiveSimApiKey, 'five-sim-key');
-  assert.deepStrictEqual(payload.fiveSimCountryOrder, ['thailand', 'vietnam']);
+  assert.deepStrictEqual(payload.fiveSimCountryOrder, ['thailand', 'england']);
   assert.equal(payload.fiveSimOperator, 'any');
   assert.equal(payload.fiveSimProduct, 'openai');
   assert.equal(payload.nexSmsApiKey, 'nex-key');
@@ -969,7 +971,7 @@ return { collectSettingsPayload };
     successfulUses: 0,
     maxUses: 3,
   });
-  assert.equal(payload.phoneVerificationReplacementLimit, 5);
+  assert.equal(payload.phoneVerificationReplacementLimit, 0);
   assert.equal(payload.phoneCodeWaitSeconds, 75);
   assert.equal(payload.phoneCodeTimeoutWindows, 3);
   assert.equal(payload.phoneCodePollIntervalSeconds, 6);
@@ -1052,6 +1054,7 @@ function applyHeroSmsFallbackSelection() {}
 function updatePhoneVerificationSettingsUI() {}
 function markSettingsDirty() {}
 function saveSettings() { savedPayload = { ...latestState }; return Promise.resolve(); }
+${extractFunction('getRestoredFiveSimCountriesFromState')}
 
 ${extractFunction('switchPhoneSmsProvider')}
 
@@ -1091,6 +1094,265 @@ return {
   assert.equal(api.savedPayload.heroSmsApiKey, 'hero-live');
   assert.equal(api.savedPayload.fiveSimApiKey, 'five-live');
   assert.equal(api.savedPayload.fiveSimProduct, 'telegram');
+});
+
+test('getRestoredFiveSimCountriesFromState prefers saved order over stale vietnam primary id', () => {
+  const api = new Function(`
+const DEFAULT_FIVE_SIM_COUNTRY_ID = 'vietnam';
+const DEFAULT_FIVE_SIM_COUNTRY_LABEL = '越南 (Vietnam)';
+const FIVE_SIM_COUNTRY_CN_BY_ID = Object.freeze({});
+${extractFunction('normalizeFiveSimCountryCode')}
+${extractFunction('normalizeFiveSimCountryId')}
+${extractFunction('normalizeFiveSimCountryLabel')}
+${extractFunction('formatFiveSimCountryDisplayLabel')}
+${extractFunction('normalizeFiveSimCountryFallbackList')}
+${extractFunction('getRestoredFiveSimCountriesFromState')}
+return { getRestoredFiveSimCountriesFromState };
+`)();
+
+  const restored = api.getRestoredFiveSimCountriesFromState({
+    fiveSimCountryId: 'vietnam',
+    fiveSimCountryLabel: '越南 (Vietnam)',
+    fiveSimCountryOrder: ['thailand', 'england'],
+    fiveSimCountryFallback: ['vietnam'],
+  });
+
+  assert.deepStrictEqual(restored.map((entry) => entry.id), ['thailand', 'england']);
+});
+
+test('collectSettingsPayload keeps saved 5sim country when runtime selection is temporarily empty', () => {
+  const api = new Function('normalizeIcloudTargetMailboxType', 'normalizeIcloudForwardMailProvider', `
+const window = {};
+let latestState = {
+  fiveSimCountryId: 'thailand',
+  fiveSimCountryLabel: 'Thailand',
+  fiveSimCountryOrder: ['thailand', 'england'],
+  fiveSimOperator: 'any',
+  fiveSimProduct: 'openai',
+};
+let cloudflareDomainEditMode = false;
+let cloudflareTempEmailDomainEditMode = false;
+const selectCfDomain = { value: '' };
+const selectTempEmailDomain = { value: '' };
+const PHONE_SMS_PROVIDER_HERO_SMS = 'hero-sms';
+const PHONE_SMS_PROVIDER_FIVE_SIM = '5sim';
+const PHONE_SMS_PROVIDER_NEXSMS = 'nexsms';
+const DEFAULT_PHONE_SMS_PROVIDER = PHONE_SMS_PROVIDER_HERO_SMS;
+const DEFAULT_FIVE_SIM_COUNTRY_ID = 'vietnam';
+const DEFAULT_FIVE_SIM_COUNTRY_LABEL = '越南 (Vietnam)';
+const DEFAULT_FIVE_SIM_OPERATOR = 'any';
+const DEFAULT_FIVE_SIM_PRODUCT = 'openai';
+const DEFAULT_HERO_SMS_COUNTRY_ID = 52;
+const DEFAULT_HERO_SMS_COUNTRY_LABEL = 'Thailand';
+const DEFAULT_NEX_SMS_COUNTRY_ORDER = [1];
+const DEFAULT_NEX_SMS_SERVICE_CODE = 'ot';
+const DEFAULT_VERIFICATION_RESEND_COUNT = 0;
+const VERIFICATION_RESEND_COUNT_MIN = 0;
+const VERIFICATION_RESEND_COUNT_MAX = 20;
+const PHONE_REPLACEMENT_LIMIT_UNLIMITED = 0;
+const DEFAULT_PHONE_VERIFICATION_REPLACEMENT_LIMIT = 2;
+const PHONE_REPLACEMENT_LIMIT_MIN = 0;
+const PHONE_REPLACEMENT_LIMIT_MAX = 20;
+const DEFAULT_PHONE_CODE_WAIT_SECONDS = 60;
+const DEFAULT_PHONE_CODE_TIMEOUT_WINDOWS = 1;
+const DEFAULT_PHONE_CODE_POLL_INTERVAL_SECONDS = 5;
+const DEFAULT_PHONE_CODE_POLL_MAX_ROUNDS = 12;
+const PHONE_CODE_WAIT_SECONDS_MIN = 15;
+const PHONE_CODE_WAIT_SECONDS_MAX = 300;
+const PHONE_CODE_TIMEOUT_WINDOWS_MIN = 1;
+const PHONE_CODE_TIMEOUT_WINDOWS_MAX = 10;
+const PHONE_CODE_POLL_INTERVAL_SECONDS_MIN = 1;
+const PHONE_CODE_POLL_INTERVAL_SECONDS_MAX = 30;
+const PHONE_CODE_POLL_MAX_ROUNDS_MIN = 1;
+const PHONE_CODE_POLL_MAX_ROUNDS_MAX = 120;
+const DEFAULT_PANEL_MODE = 'cpa';
+const DEFAULT_LOCAL_CPA_STEP9_MODE = 'default';
+const HERO_SMS_ACQUIRE_PRIORITY_COUNTRY = 'country';
+const HERO_SMS_ACQUIRE_PRIORITY_PRICE = 'price';
+const HERO_SMS_ACQUIRE_PRIORITY_PRICE_HIGH = 'price_high';
+const DEFAULT_HERO_SMS_ACQUIRE_PRIORITY = HERO_SMS_ACQUIRE_PRIORITY_COUNTRY;
+const selectPhoneSmsProvider = { value: '5sim' };
+const selectPanelMode = { value: 'cpa' };
+const inputVpsUrl = { value: '' };
+const inputVpsPassword = { value: '' };
+const inputSub2ApiUrl = { value: '' };
+const inputSub2ApiEmail = { value: '' };
+const inputSub2ApiPassword = { value: '' };
+const inputSub2ApiGroup = { value: '' };
+const inputSub2ApiDefaultProxy = { value: '' };
+const inputCodex2ApiUrl = { value: '' };
+const inputCodex2ApiAdminKey = { value: '' };
+const inputPassword = { value: '' };
+const selectMailProvider = { value: '163' };
+const selectEmailGenerator = { value: 'duck' };
+const selectIcloudHostPreference = { value: 'auto' };
+const selectIcloudTargetMailboxType = { value: 'primary' };
+const selectIcloudForwardMailProvider = { value: 'none' };
+const selectIcloudFetchMode = { value: 'reuse_existing' };
+const inputMail2925UseAccountPool = { checked: false };
+const inputInbucketHost = { value: '' };
+const inputInbucketMailbox = { value: '' };
+const inputHotmailRemoteBaseUrl = { value: '' };
+const inputHotmailLocalBaseUrl = { value: '' };
+const inputLuckmailApiKey = { value: '' };
+const inputLuckmailBaseUrl = { value: '' };
+const selectLuckmailEmailType = { value: 'gmail' };
+const inputLuckmailDomain = { value: '' };
+const inputAutoSkipFailures = { checked: false };
+const inputAutoSkipFailuresThreadIntervalMinutes = { value: '30' };
+const inputAutoDelayEnabled = { checked: false };
+const inputAutoDelayMinutes = { value: '10' };
+const inputAutoStepDelaySeconds = { value: '5' };
+const inputPhoneVerificationEnabled = { checked: true };
+const inputVerificationResendCount = { value: '0' };
+const inputHeroSmsApiKey = { value: '' };
+const inputFiveSimApiKey = { value: 'five-sim-key' };
+const inputNexSmsApiKey = { value: '' };
+const inputFiveSimOperator = { value: 'any' };
+const inputFiveSimProduct = { value: 'openai' };
+const inputHeroSmsMaxPrice = { value: '' };
+const inputHeroSmsPreferredPrice = { value: '' };
+const inputPhoneReplacementLimit = { value: '2' };
+const inputPhoneCodeWaitSeconds = { value: '60' };
+const inputPhoneCodeTimeoutWindows = { value: '1' };
+const inputPhoneCodePollIntervalSeconds = { value: '5' };
+const inputPhoneCodePollMaxRounds = { value: '12' };
+const inputHeroSmsReuseEnabled = { checked: true };
+const inputFiveSimReuseEnabled = { checked: true };
+const inputFreePhoneReuseEnabled = { checked: true };
+const inputFreePhoneReuseAutoEnabled = { checked: true };
+const selectHeroSmsAcquirePriority = { value: 'none' };
+const checkboxAutoDeleteIcloud = { checked: false };
+const inputAccountRunHistoryHelperBaseUrl = { value: 'http://127.0.0.1:17373' };
+const inputCustomMailProviderPool = { value: '' };
+const inputCustomEmailPool = { value: '' };
+const inputTempEmailBaseUrl = { value: '' };
+const inputTempEmailAdminAuth = { value: '' };
+const inputTempEmailCustomAuth = { value: '' };
+const inputTempEmailReceiveMailbox = { value: '' };
+const inputTempEmailUseRandomSubdomain = { checked: false };
+const inputCloudMailBaseUrl = { value: '' };
+const inputCloudMailAdminEmail = { value: '' };
+const inputCloudMailAdminPassword = { value: '' };
+const inputCloudMailReceiveMailbox = { value: '' };
+const inputCloudMailDomain = { value: '' };
+const contributionModeEnabled = false;
+const domains = [];
+const tempEmailDomains = [];
+const selectedCloudflareDomain = '';
+const selectedCloudflareTempEmailDomain = '';
+const ipProxyAutoSyncEnabledRawValue = false;
+const ipProxyAutoSyncIntervalMinutesRawValue = 15;
+const selectedIpProxyService = '711proxy';
+const currentIpProxyServiceProfile = {
+  mode: 'account',
+  apiUrl: '',
+  accountList: '',
+  accountSessionPrefix: '',
+  accountLifeMinutes: '',
+  poolTargetCount: '',
+  host: '',
+  port: '',
+  protocol: 'http',
+  username: '',
+  password: '',
+  region: '',
+};
+function getSelectedIpProxyEnabledSafe() { return false; }
+function normalizeIpProxyAutoSyncIntervalMinutesSafe(value) { return Number(value) || 15; }
+function normalizeIpProxyPortSafe(value) { return String(value || '').trim(); }
+function getCloudflareDomainsFromState() { return { domains: [], activeDomain: '' }; }
+function normalizeCloudflareDomainValue(value) { return String(value || '').trim(); }
+function getCloudflareTempEmailDomainsFromState() { return { domains: [], activeDomain: '' }; }
+function normalizeCloudflareTempEmailDomainValue(value) { return String(value || '').trim(); }
+function formatFiveSimCountryDisplayLabel(id, englishValue, fallback) { return String(englishValue || id || fallback || '').trim(); }
+function getSelectedPlusPaymentMethod() { return 'paypal'; }
+function getSelectedMail2925Mode() { return 'mailbox'; }
+function getSelectedHotmailServiceMode() { return 'local'; }
+function buildManagedAliasBaseEmailPayload() { return {}; }
+function resolveCurrentSidepanelCapabilities() { return null; }
+function normalizeLuckmailBaseUrl(value = '') { return String(value || '').trim(); }
+function normalizeLuckmailEmailType(value = '') { return String(value || '').trim() || 'gmail'; }
+function normalizeGpcLocalSmsHelperBaseUrlSafe(value = '') { return String(value || '').trim(); }
+function normalizeCloudMailBaseUrlInput(value = '') { return String(value || '').trim(); }
+function normalizeCloudMailReceiveMailboxInput(value = '') { return String(value || '').trim(); }
+function normalizeCloudMailDomainInput(value = '') { return String(value || '').trim(); }
+function normalizeAutoRunThreadIntervalMinutes(value) { return Number(value) || 30; }
+function normalizeAutoDelayMinutes(value) { return Number(value) || 10; }
+function normalizeAutoStepDelaySeconds(value) { return Number(value) || 5; }
+function getSelectedLocalCpaStep9Mode() { return 'default'; }
+function getSelectedSignupMethod() { return 'phone'; }
+function getSelectedPanelMode() { return 'cpa'; }
+function getPayPalAccounts() { return []; }
+function getCurrentPayPalAccount() { return null; }
+function getActiveCustomEmailPoolEmails() { return []; }
+function getNormalizedCustomEmailPoolEntriesState() { return []; }
+function getSelectedPhonePreferredActivation() { return null; }
+function syncHeroSmsFallbackSelectionOrderFromSelect() { return []; }
+function normalizeCustomEmailPoolEntries() { return []; }
+function normalizeCloudflareTempEmailBaseUrlValue(value = '') { return String(value || '').trim(); }
+function normalizeCloudflareTempEmailReceiveMailboxValue(value = '') { return String(value || '').trim(); }
+function normalizeAccountRunHistoryHelperBaseUrlValue(value = '') { return String(value || '').trim(); }
+function normalizeFiveSimCountryFallbackList(value = []) {
+  const source = Array.isArray(value) ? value : [];
+  return source.map((entry) => {
+    if (entry && typeof entry === 'object') {
+      return {
+        id: normalizeFiveSimCountryId(entry.id ?? entry.code ?? '', ''),
+        code: normalizeFiveSimCountryCode(entry.code ?? entry.id ?? '', ''),
+        label: normalizeFiveSimCountryLabel(entry.label, entry.id ?? entry.code ?? ''),
+      };
+    }
+    const id = normalizeFiveSimCountryId(entry, '');
+    return { id, code: id, label: normalizeFiveSimCountryLabel('', id) };
+  }).filter((entry) => entry.id);
+}
+function formatFiveSimCountryDisplayLabel(id, englishValue, fallback) {
+  return String(englishValue || id || fallback || '').trim();
+}
+function normalizeHeroSmsCountryFallbackList(value = []) { return Array.isArray(value) ? value : []; }
+function normalizeSub2ApiAccountPriorityValue(value) { return Number(value) || 1; }
+function normalizeIcloudFetchMode() { return 'reuse_existing'; }
+function normalizeGpcOtpChannelValue(value = '') { return String(value || '').trim() || 'whatsapp'; }
+function normalizeGpcHelperPhoneModeValue(value = '') { return String(value || '').trim() || 'manual'; }
+function normalizePhoneSmsProviderOrderValue() { return ['5sim']; }
+function getSelectedPhoneSmsProviderOrder() { return ['5sim']; }
+function getSelectedHeroSmsCountryOption() { return { id: 52, label: 'Thailand' }; }
+function getSelectedNexSmsCountries() { return [{ id: 1, label: 'Country #1' }]; }
+function getEffectiveFiveSimCountrySelection() { return []; }
+function getFiveSimCountryLabelByCode(code = '') {
+  return String(code || '').trim().toLowerCase() === 'thailand' ? 'Thailand' : '越南 (Vietnam)';
+}
+${extractFunction('normalizePhoneSmsProvider')}
+${extractFunction('normalizeVerificationResendCount')}
+${extractFunction('normalizeFiveSimCountryCode')}
+${extractFunction('normalizeFiveSimCountryOrderValue')}
+${extractFunction('normalizeFiveSimCountryId')}
+${extractFunction('normalizeFiveSimCountryLabel')}
+${extractFunction('normalizeFiveSimOperator')}
+${extractFunction('normalizeFiveSimProductValue')}
+${extractFunction('normalizeFiveSimMaxPriceValue')}
+${extractFunction('normalizePhoneSmsMaxPriceValue')}
+${extractFunction('normalizeHeroSmsMaxPriceValue')}
+${extractFunction('normalizePhoneVerificationReplacementLimit')}
+${extractFunction('normalizePhoneCodeWaitSecondsValue')}
+${extractFunction('normalizePhoneCodeTimeoutWindowsValue')}
+${extractFunction('normalizePhoneCodePollIntervalSecondsValue')}
+${extractFunction('normalizePhoneCodePollMaxRoundsValue')}
+${extractFunction('normalizeHeroSmsReuseEnabledValue')}
+${extractFunction('normalizeHeroSmsAcquirePriority')}
+${extractFunction('normalizeHeroSmsCountryId')}
+${extractFunction('normalizeHeroSmsCountryLabel')}
+${extractFunction('normalizePanelMode')}
+${extractFunction('collectSettingsPayload')}
+return { collectSettingsPayload };
+`)(normalizeIcloudTargetMailboxType, normalizeIcloudForwardMailProvider);
+
+  const payload = api.collectSettingsPayload();
+
+  assert.deepStrictEqual(payload.fiveSimCountryOrder, ['thailand', 'england']);
+  assert.equal(payload.fiveSimCountryId, 'thailand');
+  assert.equal(payload.fiveSimCountryLabel, 'Thailand');
 });
 
 test('formatPhoneSmsPriceEntriesSummary treats HeroSMS physicalCount=0 as out of stock even when count is positive', () => {

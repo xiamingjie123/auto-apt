@@ -184,6 +184,75 @@
       verifyHotmailAccount,
     } = deps;
 
+    const normalizeFiveSimCountryCode = (value = '') => String(value || '')
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9_-]+/g, '');
+
+    const normalizeFiveSimCountryOrder = (value = []) => {
+      const source = Array.isArray(value)
+        ? value
+        : String(value || '')
+          .split(/[\r\n,，;；]+/)
+          .map((entry) => String(entry || '').trim())
+          .filter(Boolean);
+      const normalized = [];
+      const seen = new Set();
+      source.forEach((entry) => {
+        const code = normalizeFiveSimCountryCode(
+          entry && typeof entry === 'object' && !Array.isArray(entry)
+            ? (entry.code || entry.country || entry.id || '')
+            : entry
+        );
+        if (!code || seen.has(code)) {
+          return;
+        }
+        seen.add(code);
+        normalized.push(code);
+      });
+      return normalized.slice(0, 10);
+    };
+
+    const alignFiveSimCountryUpdates = (updates = {}, currentState = {}, rawPayload = {}) => {
+      const hasFiveSimCountryOrder = Object.prototype.hasOwnProperty.call(updates, 'fiveSimCountryOrder');
+      const hasFiveSimCountryId = Object.prototype.hasOwnProperty.call(updates, 'fiveSimCountryId');
+      const hasFiveSimCountryLabel = Object.prototype.hasOwnProperty.call(updates, 'fiveSimCountryLabel');
+      if (!hasFiveSimCountryOrder && !hasFiveSimCountryId && !hasFiveSimCountryLabel) {
+        return updates;
+      }
+
+      const currentOrder = normalizeFiveSimCountryOrder(currentState?.fiveSimCountryOrder || []);
+      const currentPrimaryId = normalizeFiveSimCountryCode(currentState?.fiveSimCountryId || '');
+      const currentPrimaryLabel = String(currentState?.fiveSimCountryLabel || '').trim();
+      const nextOrder = hasFiveSimCountryOrder
+        ? normalizeFiveSimCountryOrder(updates.fiveSimCountryOrder)
+        : currentOrder;
+
+      if (nextOrder.length > 0) {
+        const primaryCode = nextOrder[0];
+        updates.fiveSimCountryOrder = nextOrder;
+        updates.fiveSimCountryId = primaryCode;
+        if (
+          (!String(updates.fiveSimCountryLabel || '').trim() || normalizeFiveSimCountryCode(rawPayload?.fiveSimCountryId || '') !== primaryCode)
+          && primaryCode === currentPrimaryId
+          && currentPrimaryLabel
+        ) {
+          updates.fiveSimCountryLabel = currentPrimaryLabel;
+        }
+        return updates;
+      }
+
+      if (hasFiveSimCountryOrder && currentOrder.length > 0) {
+        updates.fiveSimCountryOrder = [...currentOrder];
+        updates.fiveSimCountryId = currentPrimaryId || currentOrder[0];
+        if (!String(updates.fiveSimCountryLabel || '').trim() && currentPrimaryLabel) {
+          updates.fiveSimCountryLabel = currentPrimaryLabel;
+        }
+      }
+
+      return updates;
+    };
+
     async function appendManualAccountRunRecordIfNeeded(status, stateOverride = null, reason = '') {
       if (typeof appendAccountRunRecord !== 'function') {
         return null;
@@ -1055,6 +1124,7 @@
         case 'SAVE_SETTING': {
           const currentState = await getState();
           const updates = buildPersistentSettingsPayload(message.payload || {});
+          alignFiveSimCountryUpdates(updates, currentState, message.payload || {});
           const sessionUpdates = buildLuckmailSessionSettingsPayload(message.payload || {});
           const modeValidation = validateModeSwitch({
             ...currentState,

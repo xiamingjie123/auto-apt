@@ -574,9 +574,10 @@ const AUTO_STEP_DELAY_MAX_SECONDS = 600;
 const VERIFICATION_RESEND_COUNT_MIN = 0;
 const VERIFICATION_RESEND_COUNT_MAX = 20;
 const DEFAULT_VERIFICATION_RESEND_COUNT = 4;
-const PHONE_REPLACEMENT_LIMIT_MIN = 1;
+const PHONE_REPLACEMENT_LIMIT_UNLIMITED = 0;
+const PHONE_REPLACEMENT_LIMIT_MIN = 0;
 const PHONE_REPLACEMENT_LIMIT_MAX = 20;
-const DEFAULT_PHONE_VERIFICATION_REPLACEMENT_LIMIT = 3;
+const DEFAULT_PHONE_VERIFICATION_REPLACEMENT_LIMIT = PHONE_REPLACEMENT_LIMIT_UNLIMITED;
 const PHONE_CODE_WAIT_SECONDS_MIN = 15;
 const PHONE_CODE_WAIT_SECONDS_MAX = 300;
 const DEFAULT_PHONE_CODE_WAIT_SECONDS = 60;
@@ -2412,12 +2413,12 @@ function readAutoRunStateValue(source, keys, fallback) {
 
 function normalizePendingAutoRunStartRunCount(value) {
   const numeric = Math.floor(Number(value) || 0);
-  return numeric > 0 ? numeric : 0;
+  return numeric >= 0 ? numeric : 0;
 }
 
 function registerPendingAutoRunStartRunCount(totalRuns) {
   pendingAutoRunStartTotalRuns = normalizePendingAutoRunStartRunCount(totalRuns);
-  pendingAutoRunStartExpiresAt = pendingAutoRunStartTotalRuns > 0
+  pendingAutoRunStartExpiresAt = pendingAutoRunStartTotalRuns >= 0
     ? Date.now() + 30000
     : 0;
 }
@@ -2428,7 +2429,7 @@ function clearPendingAutoRunStartRunCount() {
 }
 
 function getPendingAutoRunStartRunCount() {
-  if (pendingAutoRunStartTotalRuns > 0 && pendingAutoRunStartExpiresAt > 0 && Date.now() > pendingAutoRunStartExpiresAt) {
+  if (pendingAutoRunStartExpiresAt > 0 && Date.now() > pendingAutoRunStartExpiresAt) {
     clearPendingAutoRunStartRunCount();
   }
   return pendingAutoRunStartTotalRuns;
@@ -2436,6 +2437,10 @@ function getPendingAutoRunStartRunCount() {
 
 function getAutoRunSourceTotalRuns(source = {}) {
   return normalizePendingAutoRunStartRunCount(readAutoRunStateValue(source, ['autoRunTotalRuns', 'totalRuns'], 0));
+}
+
+function isUnlimitedAutoRunTotalRuns(totalRuns) {
+  return Number(totalRuns) === 0;
 }
 
 function syncAutoRunState(source = {}) {
@@ -2507,9 +2512,9 @@ function shouldSyncRunCountFromAutoRunSource(source = {}) {
   }
 
   const pendingTotalRuns = getPendingAutoRunStartRunCount();
-  if (pendingTotalRuns > 0) {
+  if (pendingAutoRunStartExpiresAt > 0) {
     const sourceTotalRuns = getAutoRunSourceTotalRuns(source);
-    if (sourceTotalRuns > 0 && sourceTotalRuns !== pendingTotalRuns) {
+    if (sourceTotalRuns !== pendingTotalRuns) {
       return false;
     }
     if (sourceTotalRuns === pendingTotalRuns) {
@@ -2520,12 +2525,14 @@ function shouldSyncRunCountFromAutoRunSource(source = {}) {
 }
 
 function getAutoRunLabel(payload = currentAutoRun) {
+  const isUnlimited = isUnlimitedAutoRunTotalRuns(payload.totalRuns || 0);
+  const totalRunsLabel = isUnlimited ? '∞' : String(payload.totalRuns || 1);
   if ((payload.phase ?? currentAutoRun.phase) === 'scheduled') {
-    return (payload.totalRuns || 1) > 1 ? ` (${payload.totalRuns}轮)` : '';
+    return isUnlimited || (payload.totalRuns || 1) > 1 ? ` (${totalRunsLabel}轮)` : '';
   }
   const attemptLabel = payload.attemptRun ? ` · 尝试${payload.attemptRun}` : '';
-  if ((payload.totalRuns || 1) > 1) {
-    return ` (${payload.currentRun}/${payload.totalRuns}${attemptLabel})`;
+  if (isUnlimited || (payload.totalRuns || 1) > 1) {
+    return ` (${payload.currentRun}/${totalRunsLabel}${attemptLabel})`;
   }
   return attemptLabel ? ` (${attemptLabel.slice(3)})` : '';
 }
@@ -2746,7 +2753,11 @@ function getRunCountValue() {
   if (lockedRunCount > 0) {
     return lockedRunCount;
   }
-  return Math.max(1, parseInt(inputRunCount.value, 10) || 1);
+  const numeric = Number.parseInt(String(inputRunCount.value || '').trim(), 10);
+  if (!Number.isFinite(numeric)) {
+    return 1;
+  }
+  return Math.max(0, numeric);
 }
 
 function updateFallbackThreadIntervalInputState() {
@@ -3490,8 +3501,30 @@ function collectSettingsPayload() {
     )
     : defaultPhoneCodePollMaxRounds;
   const selectedPhoneSmsCountry = phoneSmsProviderValue === PHONE_SMS_PROVIDER_FIVE_SIM
-    ? ((typeof getSelectedFiveSimCountries === 'function' ? getSelectedFiveSimCountries()[0] : null)
-      || { id: DEFAULT_FIVE_SIM_COUNTRY_ID, code: DEFAULT_FIVE_SIM_COUNTRY_ID, label: DEFAULT_FIVE_SIM_COUNTRY_LABEL })
+    ? (() => {
+      const effectiveFiveSimSelection = typeof getEffectiveFiveSimCountrySelection === 'function'
+        ? getEffectiveFiveSimCountrySelection()
+        : [];
+      const cachedFiveSimSelection = normalizeFiveSimCountryFallbackList(
+        Array.isArray(latestState?.fiveSimCountryOrder) && latestState.fiveSimCountryOrder.length > 0
+          ? latestState.fiveSimCountryOrder
+          : (
+            latestState?.fiveSimCountryId
+              ? [{ id: latestState.fiveSimCountryId, label: latestState?.fiveSimCountryLabel }]
+              : []
+          )
+      ).map((country) => {
+        const code = normalizeFiveSimCountryCode(country.code || country.id, '');
+        return {
+          id: code,
+          code,
+          label: normalizeFiveSimCountryLabel(country.label, code),
+        };
+      }).filter((country) => country.code);
+      return effectiveFiveSimSelection[0]
+        || cachedFiveSimSelection[0]
+        || { id: DEFAULT_FIVE_SIM_COUNTRY_ID, code: DEFAULT_FIVE_SIM_COUNTRY_ID, label: DEFAULT_FIVE_SIM_COUNTRY_LABEL };
+    })()
     : (phoneSmsProviderValue === phoneSmsProviderNexsms
       ? ((typeof getSelectedNexSmsCountries === 'function' ? getSelectedNexSmsCountries()[0] : null)
         || { id: defaultNexSmsCountryOrder[0], label: `Country #${defaultNexSmsCountryOrder[0]}` })
@@ -3525,11 +3558,25 @@ function collectSettingsPayload() {
     ? syncHeroSmsFallbackSelectionOrderFromSelect()
       .filter((country) => String(country.id) !== String(selectedPhoneSmsCountry.id))
     : [];
-  const fiveSimCountryOrderValue = typeof getSelectedFiveSimCountries === 'function'
-    ? getSelectedFiveSimCountries()
+  const rawFiveSimCountryOrderValue = typeof getEffectiveFiveSimCountrySelection === 'function'
+    ? getEffectiveFiveSimCountrySelection()
       .map((country) => normalizeFiveSimCountryCode(country.code || country.id, ''))
       .filter(Boolean)
     : normalizeFiveSimCountryOrderForPayload(latestState?.fiveSimCountryOrder || []);
+  const fallbackFiveSimCountryOrderValue = normalizeFiveSimCountryFallbackList(
+    Array.isArray(latestState?.fiveSimCountryOrder) && latestState.fiveSimCountryOrder.length > 0
+      ? latestState.fiveSimCountryOrder
+      : (
+        latestState?.fiveSimCountryId
+          ? [{ id: latestState.fiveSimCountryId, label: latestState?.fiveSimCountryLabel }]
+          : []
+      )
+  )
+    .map((country) => normalizeFiveSimCountryCode(country.code || country.id, ''))
+    .filter(Boolean);
+  const fiveSimCountryOrderValue = rawFiveSimCountryOrderValue.length > 0
+    ? rawFiveSimCountryOrderValue
+    : fallbackFiveSimCountryOrderValue;
   const resolvedFiveSimPrimaryCountryId = fiveSimCountryOrderValue[0]
     ? normalizeFiveSimCountryId(fiveSimCountryOrderValue[0], DEFAULT_FIVE_SIM_COUNTRY_ID)
     : normalizeFiveSimCountryId(fiveSimCountry.id, DEFAULT_FIVE_SIM_COUNTRY_ID);
@@ -4681,15 +4728,13 @@ async function fetchFiveSimCountryOptions() {
 }
 
 function normalizePhoneVerificationReplacementLimit(value, fallback = DEFAULT_PHONE_VERIFICATION_REPLACEMENT_LIMIT) {
-  const rawValue = String(value ?? '').trim();
-  const parsed = Number.parseInt(rawValue, 10);
-  if (!Number.isFinite(parsed)) {
-    return Math.max(
-      PHONE_REPLACEMENT_LIMIT_MIN,
-      Math.min(PHONE_REPLACEMENT_LIMIT_MAX, Number(fallback) || DEFAULT_PHONE_VERIFICATION_REPLACEMENT_LIMIT)
-    );
-  }
-  return Math.max(PHONE_REPLACEMENT_LIMIT_MIN, Math.min(PHONE_REPLACEMENT_LIMIT_MAX, parsed));
+  // 业务说明：
+  // 当前版本固定采用“无限接号”策略。
+  // 前端继续保留这个字段，只是为了兼容旧界面结构和旧存量设置；
+  // 实际保存和展示时一律回写 0，表示持续接号直到余额不足自动停止。
+  void value;
+  void fallback;
+  return PHONE_REPLACEMENT_LIMIT_UNLIMITED;
 }
 
 function normalizePhoneCodeWaitSecondsValue(value, fallback = DEFAULT_PHONE_CODE_WAIT_SECONDS) {
@@ -5351,8 +5396,56 @@ function getSelectedFiveSimCountries() {
   return syncFiveSimCountrySelectionOrderFromSelect({
     enforceMax: true,
     ensureDefault: false,
+    preserveWhenEmpty: true,
     showLimitToast: false,
   });
+}
+
+function getEffectiveFiveSimCountrySelection() {
+  const runtimeOptions = getFiveSimRuntimeCountryOptions();
+  const optionLabelByCode = new Map(
+    runtimeOptions.map((entry) => [
+      normalizeFiveSimCountryCode(entry.code || entry.id, ''),
+      normalizeFiveSimCountryLabel(entry.label, entry.code || entry.id),
+    ])
+  );
+  const selectedCountries = getSelectedFiveSimCountries();
+  if (selectedCountries.length > 0) {
+    return selectedCountries.map((country) => {
+      const code = normalizeFiveSimCountryCode(country.code || country.id, '');
+      return {
+        id: code,
+        code,
+        label: optionLabelByCode.get(code) || normalizeFiveSimCountryLabel(country.label, code),
+      };
+    });
+  }
+
+  // 业务说明：
+  // 用户可能刚刚在 5sim 国家菜单里完成点击，自动保存还没来得及回写 latestState，
+  // 或者国家列表尚未异步刷新完毕。这里优先兜底使用当前内存中的选择顺序，
+  // 避免自动开始时错误回退到默认越南。
+  const inMemoryOrder = normalizeFiveSimCountryFallbackList(
+    fiveSimCountrySelectionOrder.length > 0
+      ? fiveSimCountrySelectionOrder
+      : (
+        Array.isArray(latestState?.fiveSimCountryOrder) && latestState.fiveSimCountryOrder.length > 0
+          ? latestState.fiveSimCountryOrder
+          : (
+            latestState?.fiveSimCountryId
+              ? [{ id: latestState.fiveSimCountryId, label: latestState?.fiveSimCountryLabel }]
+              : []
+          )
+      )
+  );
+  return inMemoryOrder.map((country) => {
+    const code = normalizeFiveSimCountryCode(country.code || country.id, '');
+    return {
+      id: code,
+      code,
+      label: optionLabelByCode.get(code) || normalizeFiveSimCountryLabel(country.label, code),
+    };
+  }).filter((country) => country.code);
 }
 
 function getSelectedNexSmsCountries() {
@@ -5671,6 +5764,21 @@ function applyHeroSmsFallbackSelection(countries = [], options = {}) {
     ensureDefault: false,
     showLimitToast: false,
   });
+}
+
+function getRestoredFiveSimCountriesFromState(state = latestState) {
+  const preferredOrder = normalizeFiveSimCountryFallbackList(
+    Array.isArray(state?.fiveSimCountryOrder) ? state.fiveSimCountryOrder : []
+  );
+  if (preferredOrder.length > 0) {
+    return preferredOrder;
+  }
+  return normalizeFiveSimCountryFallbackList([
+    state?.fiveSimCountryId
+      ? { id: state.fiveSimCountryId, label: state?.fiveSimCountryLabel }
+      : null,
+    ...normalizeFiveSimCountryFallbackList(state?.fiveSimCountryFallback || []),
+  ].filter(Boolean));
 }
 
 function removeHeroSmsCountryFromOrder(id) {
@@ -6367,6 +6475,7 @@ function syncFiveSimCountrySelectionOrderFromSelect(options = {}) {
   const selectionLimit = Math.max(1, Math.floor(Number(options.maxSelection) || HERO_SMS_COUNTRY_SELECTION_MAX));
   const enforceMax = options.enforceMax !== false;
   const ensureDefault = options.ensureDefault !== false;
+  const preserveWhenEmpty = options.preserveWhenEmpty === true;
   const showLimitToast = Boolean(options.showLimitToast);
   const countrySelect = selectFiveSimCountry;
   if (!countrySelect) {
@@ -6387,6 +6496,27 @@ function syncFiveSimCountrySelectionOrderFromSelect(options = {}) {
       nextOrder.push(code);
     }
   });
+
+  if (!ensureDefault && !nextOrder.length && preserveWhenEmpty) {
+    const fallbackOrder = normalizeFiveSimCountryFallbackList(
+      fiveSimCountrySelectionOrder.length > 0
+        ? fiveSimCountrySelectionOrder
+        : (
+          Array.isArray(latestState?.fiveSimCountryOrder) && latestState.fiveSimCountryOrder.length > 0
+            ? latestState.fiveSimCountryOrder
+            : (
+              latestState?.fiveSimCountryId
+                ? [{ id: latestState.fiveSimCountryId, label: latestState?.fiveSimCountryLabel }]
+                : []
+            )
+        )
+    )
+      .map((entry) => normalizeFiveSimCountryCode(entry.code || entry.id, ''))
+      .filter(Boolean);
+    if (fallbackOrder.length > 0) {
+      nextOrder = fallbackOrder;
+    }
+  }
 
   if (ensureDefault && !nextOrder.length) {
     nextOrder = [normalizeFiveSimCountryCode(countrySelect.value || DEFAULT_FIVE_SIM_COUNTRY_ID)];
@@ -6416,11 +6546,14 @@ function syncFiveSimCountrySelectionOrderFromSelect(options = {}) {
 }
 
 function applyFiveSimCountrySelection(countries = [], options = {}) {
+  const previousOrder = [...fiveSimCountrySelectionOrder];
   const normalized = normalizeFiveSimCountryFallbackList(countries).slice(0, HERO_SMS_COUNTRY_SELECTION_MAX);
   const selectedCodes = normalized
     .map((entry) => normalizeFiveSimCountryCode(entry.code || entry.id, ''))
     .filter(Boolean);
-  fiveSimCountrySelectionOrder = [...selectedCodes];
+  fiveSimCountrySelectionOrder = selectedCodes.length > 0
+    ? [...selectedCodes]
+    : (options.preserveWhenEmpty === false ? [] : previousOrder);
   if (selectFiveSimCountry) {
     const selectedSet = new Set(selectedCodes);
     Array.from(selectFiveSimCountry.options || []).forEach((option) => {
@@ -6430,6 +6563,7 @@ function applyFiveSimCountrySelection(countries = [], options = {}) {
   return syncFiveSimCountrySelectionOrderFromSelect({
     ensureDefault: options.ensureDefault !== false,
     enforceMax: true,
+    preserveWhenEmpty: options.preserveWhenEmpty !== false,
     showLimitToast: false,
   });
 }
@@ -6538,6 +6672,7 @@ async function loadFiveSimCountries() {
 
   applyFiveSimCountrySelection(previousOrder.length ? previousOrder : latestState?.fiveSimCountryOrder || [], {
     ensureDefault: false,
+    preserveWhenEmpty: true,
   });
 }
 
@@ -8563,6 +8698,23 @@ async function saveSettings(options = {}) {
 async function persistCurrentSettingsForAction() {
   clearTimeout(settingsAutoSaveTimer);
   await waitForSettingsSaveIdle();
+  if (getSelectedPhoneSmsProvider() === PHONE_SMS_PROVIDER_FIVE_SIM) {
+    // 业务说明：
+    // 自动开始前强制把 5sim 当前国家选择与内存顺序做一次最终对齐，
+    // 防止“刚切完国家马上点自动”时，保存链路读到旧的国家顺序。
+    const syncedCountries = typeof getEffectiveFiveSimCountrySelection === 'function'
+      ? getEffectiveFiveSimCountrySelection()
+      : [];
+    if (syncedCountries.length > 0) {
+      applyFiveSimCountrySelection(syncedCountries, { ensureDefault: false });
+      syncLatestState({
+        fiveSimCountryOrder: syncedCountries.map((country) => normalizeFiveSimCountryCode(country.code || country.id, ''))
+          .filter(Boolean),
+        fiveSimCountryId: normalizeFiveSimCountryId(syncedCountries[0].code || syncedCountries[0].id, DEFAULT_FIVE_SIM_COUNTRY_ID),
+        fiveSimCountryLabel: normalizeFiveSimCountryLabel(syncedCountries[0].label, DEFAULT_FIVE_SIM_COUNTRY_LABEL),
+      });
+    }
+  }
   await persistSignupPhoneInputForAction();
   await saveSettings({ silent: true, force: true });
 }
@@ -8607,7 +8759,7 @@ function applyAutoRunStatus(payload = currentAutoRun) {
     : (currentAutoRun.autoRunning || isSyncPhase(currentAutoRun.phase));
   if (lockedRunCount > 0) {
     inputRunCount.value = String(lockedRunCount);
-  } else if (shouldSyncRunCount && currentAutoRun.totalRuns > 0) {
+  } else if (shouldSyncRunCount && currentAutoRun.totalRuns >= 0) {
     inputRunCount.value = String(currentAutoRun.totalRuns);
   }
 
@@ -9241,11 +9393,14 @@ function applySettingsState(state) {
     );
   }
   if (typeof applyHeroSmsFallbackSelection === 'function') {
+    const restoredFiveSimCountries = restoredPhoneSmsProvider === PHONE_SMS_PROVIDER_FIVE_SIM
+      ? getRestoredFiveSimCountriesFromState(state)
+      : [];
     const primaryCountry = restoredPhoneSmsProvider === PHONE_SMS_PROVIDER_FIVE_SIM
-      ? {
+      ? (restoredFiveSimCountries[0] || {
         id: normalizeFiveSimCountryId(state?.fiveSimCountryId),
         label: normalizeFiveSimCountryLabel(state?.fiveSimCountryLabel),
-      }
+      })
       : {
         id: normalizeHeroSmsCountryId(state?.heroSmsCountryId),
         label: normalizeHeroSmsCountryLabel(state?.heroSmsCountryLabel),
@@ -9254,7 +9409,7 @@ function applySettingsState(state) {
       [
         primaryCountry,
         ...(restoredPhoneSmsProvider === PHONE_SMS_PROVIDER_FIVE_SIM
-          ? normalizeFiveSimCountryFallbackList(state?.fiveSimCountryFallback || [])
+          ? restoredFiveSimCountries.slice(1)
           : normalizeHeroSmsCountryFallbackList(state?.heroSmsCountryFallback || [])),
       ],
       { includePrimary: true }
@@ -13575,17 +13730,20 @@ async function switchPhoneSmsProvider(nextProvider) {
   if (rowHeroSmsPriceTiers) rowHeroSmsPriceTiers.style.display = 'none';
 
   await loadHeroSmsCountries();
+  const restoredFiveSimCountries = normalizedNextProvider === PHONE_SMS_PROVIDER_FIVE_SIM
+    ? getRestoredFiveSimCountriesFromState(latestState)
+    : [];
   const restoredPrimary = normalizedNextProvider === PHONE_SMS_PROVIDER_FIVE_SIM
-    ? {
+    ? (restoredFiveSimCountries[0] || {
       id: normalizeFiveSimCountryId(latestState?.fiveSimCountryId),
       label: normalizeFiveSimCountryLabel(latestState?.fiveSimCountryLabel),
-    }
+    })
     : {
       id: normalizeHeroSmsCountryId(latestState?.heroSmsCountryId),
       label: normalizeHeroSmsCountryLabel(latestState?.heroSmsCountryLabel),
     };
   const restoredFallback = normalizedNextProvider === PHONE_SMS_PROVIDER_FIVE_SIM
-    ? normalizeFiveSimCountryFallbackList(latestState?.fiveSimCountryFallback || [])
+    ? restoredFiveSimCountries.slice(1)
     : normalizeHeroSmsCountryFallbackList(latestState?.heroSmsCountryFallback || []);
   applyHeroSmsFallbackSelection([restoredPrimary, ...restoredFallback], { includePrimary: true });
   updatePhoneVerificationSettingsUI();

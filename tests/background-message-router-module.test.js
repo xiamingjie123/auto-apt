@@ -263,3 +263,108 @@ test('SAVE_SETTING applies shared mode-switch normalization before persisting in
   });
   assert.equal(response.modeValidation?.errors?.[0]?.code, 'plus_mode_unsupported');
 });
+
+test('SAVE_SETTING keeps existing 5sim country order when an empty order is accidentally submitted', async () => {
+  const source = fs.readFileSync('background/message-router.js', 'utf8');
+  const globalScope = { console };
+  const api = new Function('self', `${source}; return self.MultiPageBackgroundMessageRouter;`)(globalScope);
+  const broadcasts = [];
+  const persistedPayloads = [];
+  let state = {
+    phoneSmsProvider: '5sim',
+    fiveSimCountryId: 'thailand',
+    fiveSimCountryLabel: 'Thailand',
+    fiveSimCountryOrder: ['thailand', 'england'],
+    plusModeEnabled: false,
+    plusPaymentMethod: 'paypal',
+  };
+
+  const router = api.createMessageRouter({
+    addLog: async () => {},
+    buildLuckmailSessionSettingsPayload: () => ({}),
+    buildPersistentSettingsPayload: (input = {}) => {
+      const updates = {};
+      if (Object.prototype.hasOwnProperty.call(input, 'fiveSimCountryOrder')) {
+        updates.fiveSimCountryOrder = Array.isArray(input.fiveSimCountryOrder) ? [...input.fiveSimCountryOrder] : [];
+      }
+      if (Object.prototype.hasOwnProperty.call(input, 'fiveSimCountryId')) {
+        updates.fiveSimCountryId = String(input.fiveSimCountryId || '').trim().toLowerCase() || 'vietnam';
+      }
+      if (Object.prototype.hasOwnProperty.call(input, 'fiveSimCountryLabel')) {
+        updates.fiveSimCountryLabel = String(input.fiveSimCountryLabel || '').trim() || '越南 (Vietnam)';
+      }
+      return updates;
+    },
+    broadcastDataUpdate: (payload) => broadcasts.push(payload),
+    getState: async () => ({ ...state }),
+    setPersistentSettings: async (updates) => {
+      persistedPayloads.push({ ...updates });
+    },
+    setState: async (updates) => {
+      state = { ...state, ...updates };
+    },
+  });
+
+  const response = await router.handleMessage({
+    type: 'SAVE_SETTING',
+    payload: {
+      fiveSimCountryOrder: [],
+      fiveSimCountryId: 'vietnam',
+      fiveSimCountryLabel: '越南 (Vietnam)',
+    },
+  });
+
+  assert.equal(response.ok, true);
+  assert.deepStrictEqual(state.fiveSimCountryOrder, ['thailand', 'england']);
+  assert.equal(state.fiveSimCountryId, 'thailand');
+  assert.equal(persistedPayloads[0].fiveSimCountryId, 'thailand');
+  assert.deepStrictEqual(persistedPayloads[0].fiveSimCountryOrder, ['thailand', 'england']);
+  assert.deepStrictEqual(broadcasts.at(-1).fiveSimCountryOrder, ['thailand', 'england']);
+});
+
+test('SAVE_SETTING aligns 5sim primary country with the first ordered country', async () => {
+  const source = fs.readFileSync('background/message-router.js', 'utf8');
+  const globalScope = { console };
+  const api = new Function('self', `${source}; return self.MultiPageBackgroundMessageRouter;`)(globalScope);
+  const persistedPayloads = [];
+  let state = {
+    phoneSmsProvider: '5sim',
+    fiveSimCountryId: 'thailand',
+    fiveSimCountryLabel: 'Thailand',
+    fiveSimCountryOrder: ['thailand'],
+    plusModeEnabled: false,
+    plusPaymentMethod: 'paypal',
+  };
+
+  const router = api.createMessageRouter({
+    addLog: async () => {},
+    buildLuckmailSessionSettingsPayload: () => ({}),
+    buildPersistentSettingsPayload: (input = {}) => ({
+      fiveSimCountryOrder: Array.isArray(input.fiveSimCountryOrder) ? [...input.fiveSimCountryOrder] : [],
+      fiveSimCountryId: String(input.fiveSimCountryId || '').trim().toLowerCase() || 'vietnam',
+      fiveSimCountryLabel: String(input.fiveSimCountryLabel || '').trim() || '越南 (Vietnam)',
+    }),
+    broadcastDataUpdate: () => {},
+    getState: async () => ({ ...state }),
+    setPersistentSettings: async (updates) => {
+      persistedPayloads.push({ ...updates });
+    },
+    setState: async (updates) => {
+      state = { ...state, ...updates };
+    },
+  });
+
+  const response = await router.handleMessage({
+    type: 'SAVE_SETTING',
+    payload: {
+      fiveSimCountryOrder: ['indonesia', 'thailand'],
+      fiveSimCountryId: 'vietnam',
+      fiveSimCountryLabel: '越南 (Vietnam)',
+    },
+  });
+
+  assert.equal(response.ok, true);
+  assert.deepStrictEqual(state.fiveSimCountryOrder, ['indonesia', 'thailand']);
+  assert.equal(state.fiveSimCountryId, 'indonesia');
+  assert.equal(persistedPayloads[0].fiveSimCountryId, 'indonesia');
+});
