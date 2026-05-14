@@ -59,30 +59,35 @@
         .filter(Boolean);
     }
 
-    async function requestMailfreeMessages(config, address, options = {}) {
+    async function requestMailfree(config, path, options = {}) {
       if (!fetchImpl) {
         throw new Error('Mailfree 当前运行环境不支持 fetch。');
       }
-      const targetAddress = normalizeCloudflareTempEmailAddress(address);
-      if (!targetAddress) {
-        throw new Error('Mailfree 缺少 mailbox 参数。');
-      }
-
       const timeoutMs = Number(options.timeoutMs) || 20000;
-      const requestUrl = new URL('/api/emails', config.baseUrl);
-      requestUrl.searchParams.set('mailbox', targetAddress);
+      const requestUrl = new URL(path, config.baseUrl);
+      const searchParams = options.searchParams && typeof options.searchParams === 'object'
+        ? options.searchParams
+        : null;
+      if (searchParams) {
+        Object.entries(searchParams).forEach(([key, value]) => {
+          if (value == null || value === '') return;
+          requestUrl.searchParams.set(key, String(value));
+        });
+      }
 
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(new Error('timeout')), timeoutMs);
       let response;
       try {
         response = await fetchImpl(requestUrl.toString(), {
-          method: 'GET',
+          method: options.method || 'GET',
           headers: {
             Accept: 'application/json',
+            ...(options.headers || {}),
           },
           credentials: 'include',
           signal: controller.signal,
+          body: options.body,
         });
       } catch (err) {
         const errorMessage = err?.name === 'AbortError'
@@ -111,6 +116,27 @@
         throw new Error(`Mailfree 请求失败：${payloadError || text || `HTTP ${response.status}`}`);
       }
 
+      return {
+        response,
+        parsed,
+        text,
+      };
+    }
+
+    async function requestMailfreeMessages(config, address, options = {}) {
+      const targetAddress = normalizeCloudflareTempEmailAddress(address);
+      if (!targetAddress) {
+        throw new Error('Mailfree 缺少 mailbox 参数。');
+      }
+
+      const { parsed } = await requestMailfree(config, '/api/emails', {
+        method: 'GET',
+        searchParams: {
+          mailbox: targetAddress,
+        },
+        timeoutMs: options.timeoutMs,
+      });
+
       if (!Array.isArray(parsed)) {
         throw new Error('Mailfree 返回的邮件列表格式无效。');
       }
@@ -118,10 +144,22 @@
       return normalizeMailfreeMessages(parsed);
     }
 
+    async function requestMailfreeDeleteMessage(config, mailId, options = {}) {
+      const targetMailId = String(mailId || '').trim();
+      if (!targetMailId) return false;
+
+      await requestMailfree(config, `/api/email/${encodeURIComponent(targetMailId)}`, {
+        method: 'DELETE',
+        timeoutMs: options.timeoutMs,
+      });
+      return true;
+    }
+
     return {
       isMailfreeBaseUrl,
       normalizeMailfreeMessage,
       normalizeMailfreeMessages,
+      requestMailfreeDeleteMessage,
       requestMailfreeMessages,
     };
   }

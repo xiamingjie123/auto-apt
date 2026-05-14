@@ -72,6 +72,7 @@ function createProviderApi(options = {}) {
     extractFunction('normalizeCloudflareTempEmailReceiveMailbox'),
     extractFunction('resolveCloudflareTempEmailPollTargetEmail'),
     extractFunction('summarizeCloudflareTempEmailMessagesForLog'),
+    extractFunction('deleteCloudflareTempEmailMail'),
     extractFunction('listCloudflareTempEmailMessages'),
     extractFunction('pollCloudflareTempEmailVerificationCode'),
   ].join('\n');
@@ -83,6 +84,8 @@ const CLOUDFLARE_TEMP_EMAIL_DEFAULT_PAGE_SIZE = 20;
 const logs = [];
 const listCalls = [];
 const mailfreeCalls = [];
+const mailfreeDeleteCalls = [];
+const requestCalls = [];
 const messages = options.messages;
 function normalizeCloudflareTempEmailAddress(value) {
   return String(value || '').trim().toLowerCase();
@@ -99,11 +102,25 @@ const mailfreeProvider = {
     mailfreeCalls.push(address);
     return messages;
   },
+  async requestMailfreeDeleteMessage(_config, mailId) {
+    mailfreeDeleteCalls.push(mailId);
+    if (options.deleteShouldFail) {
+      throw new Error('delete failed');
+    }
+    return true;
+  },
 };
 function ensureCloudflareTempEmailConfig() {
   return { receiveMailbox: options.receiveMailbox, baseUrl: options.baseUrl };
 }
-async function requestCloudflareTempEmailJson(_config, _path, requestOptions) {
+async function requestCloudflareTempEmailJson(_config, path, requestOptions) {
+  requestCalls.push({ path, method: requestOptions?.method || 'GET' });
+  if ((requestOptions?.method || 'GET') === 'DELETE') {
+    if (options.deleteShouldFail) {
+      throw new Error('delete failed');
+    }
+    return { ok: true };
+  }
   listCalls.push(requestOptions?.searchParams?.address || '');
   return { data: messages };
 }
@@ -124,9 +141,7 @@ function pickVerificationMessageWithTimeFallback(currentMessages) {
   };
 }
 async function deleteCloudflareTempEmailMail() {
-  if (options.deleteShouldFail) {
-    throw new Error('delete failed');
-  }
+  throw new Error('test stub should be replaced by extracted function');
 }
 
 ${bundle}
@@ -134,7 +149,7 @@ ${bundle}
 return {
   pollCloudflareTempEmailVerificationCode,
   snapshot() {
-    return { logs, listCalls, mailfreeCalls };
+    return { logs, listCalls, mailfreeCalls, mailfreeDeleteCalls, requestCalls };
   },
 };
 `)({
@@ -252,5 +267,6 @@ test('pollCloudflareTempEmailVerificationCode uses mailfree protocol when base u
 
   assert.equal(result.code, '135790');
   assert.deepEqual(api.snapshot().mailfreeCalls, ['u9b70nbq2s@sdgsdf.109286.xyz']);
+  assert.deepEqual(api.snapshot().mailfreeDeleteCalls, ['mail-4']);
   assert.deepEqual(api.snapshot().listCalls, []);
 });

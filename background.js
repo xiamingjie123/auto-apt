@@ -5665,6 +5665,10 @@ async function deleteCloudflareTempEmailMail(config, mailId) {
   const normalizedMailId = String(mailId || '').trim();
   if (!normalizedMailId) return false;
 
+  if (mailfreeProvider?.isMailfreeBaseUrl?.(config?.baseUrl)) {
+    return mailfreeProvider.requestMailfreeDeleteMessage(config, normalizedMailId);
+  }
+
   await requestCloudflareTempEmailJson(config, `/admin/mails/${encodeURIComponent(normalizedMailId)}`, {
     method: 'DELETE',
   });
