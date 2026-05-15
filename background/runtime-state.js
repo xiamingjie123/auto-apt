@@ -102,6 +102,8 @@
         'signupPhoneCompletedActivation',
         'signupPhoneVerificationRequestedAt',
         'signupPhoneVerificationPurpose',
+        'signupPhoneNeedsReplacement',
+        'signupPhoneReplacementReason',
       ]),
       luckmail: Object.freeze([
         'currentLuckmailPurchase',

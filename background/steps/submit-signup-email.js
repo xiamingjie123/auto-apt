@@ -282,6 +282,22 @@
 
     async function resolveSignupPhoneForStep2(state = {}) {
       const existingActivation = normalizeSignupPhoneActivationForStep2(state?.signupPhoneActivation);
+      if (state?.signupPhoneNeedsReplacement) {
+        if (!existingActivation) {
+          throw new Error('步骤 2：需要换号，但缺少可用于订单内换号的注册手机号接码订单。');
+        }
+        if (typeof phoneVerificationHelpers?.replaceSignupPhoneActivation !== 'function') {
+          throw new Error('步骤 2：接码模块尚未提供订单内换号能力。');
+        }
+        const activation = await phoneVerificationHelpers.replaceSignupPhoneActivation(state, existingActivation, {
+          reason: state?.signupPhoneReplacementReason || '',
+        });
+        return {
+          phoneNumber: activation.phoneNumber,
+          activation,
+        };
+      }
+
       if (existingActivation?.phoneNumber) {
         await addLog(`步骤 2：复用当前注册手机号 ${existingActivation.phoneNumber}，不重新获取号码。`);
         return {
@@ -396,6 +412,8 @@
         accountIdentifier: phoneNumber,
         signupPhoneNumber: phoneNumber,
         signupPhoneActivation: activation || null,
+        signupPhoneNeedsReplacement: false,
+        signupPhoneReplacementReason: '',
         nextSignupState: landingResult?.state || step2Result?.state || 'password_page',
         nextSignupUrl: landingResult?.url || step2Result?.url || '',
         skippedPasswordStep: landingResult?.state === 'phone_verification_page' || landingResult?.state === 'profile_page',

@@ -4576,6 +4576,8 @@
         signupPhoneActivation: null,
         signupPhoneVerificationRequestedAt: null,
         signupPhoneVerificationPurpose: '',
+        signupPhoneNeedsReplacement: false,
+        signupPhoneReplacementReason: '',
         accountIdentifierType: null,
         accountIdentifier: '',
         ...updates,
@@ -4884,6 +4886,60 @@
           accountIdentifierType: 'phone',
           accountIdentifier: signupActivation.phoneNumber,
         });
+        return signupActivation;
+      });
+    }
+
+    async function replaceSignupPhoneActivation(state = {}, activation = null, options = {}) {
+      return withPhoneVerificationLogContext({ step: 2, stepKey: 'submit-signup-email' }, async () => {
+        const normalizedActivation = normalizeActivation(activation || state?.signupPhoneActivation);
+        if (!normalizedActivation) {
+          throw new Error('步骤 2：缺少可用于订单内换号的注册手机号接码订单。');
+        }
+
+        const providerId = getActivationProviderId(normalizedActivation, state);
+        if (providerId === PHONE_SMS_PROVIDER_NEXSMS) {
+          throw new Error('步骤 2：NexSMS 当前不支持在已有接码订单内换号，请切换支持订单内换号的平台。');
+        }
+
+        const reasonText = String(options?.reason || state?.signupPhoneReplacementReason || '').trim();
+        await addLog(
+          `步骤 2：按步骤 9 的换号流程在当前接码订单内更换注册手机号 ${normalizedActivation.phoneNumber}${reasonText ? `（${reasonText}）` : ''}。`,
+          'warn'
+        );
+
+        const nextActivation = await reactivatePhoneActivation(state, normalizedActivation);
+        const normalizedNextActivation = normalizeActivation(nextActivation);
+        if (!normalizedNextActivation) {
+          throw new Error('步骤 2：接码平台订单内换号后返回的手机号订单无效。');
+        }
+
+        const previousDigits = String(normalizedActivation.phoneNumber || '').replace(/\D+/g, '');
+        const nextDigits = String(normalizedNextActivation.phoneNumber || '').replace(/\D+/g, '');
+        if (previousDigits && nextDigits && previousDigits === nextDigits) {
+          throw new Error(
+            `步骤 2：接码平台订单内换号后仍返回原手机号 ${normalizedNextActivation.phoneNumber}，无法满足必须切换手机号。`
+          );
+        }
+
+        const countryConfig = resolveCountryConfigFromActivation(normalizedNextActivation, state);
+        const signupActivation = normalizeActivation({
+          ...normalizedNextActivation,
+          countryId: countryConfig?.id ?? normalizedNextActivation.countryId,
+          countryLabel: normalizedNextActivation.countryLabel || countryConfig?.label || '',
+        }) || normalizedNextActivation;
+
+        await persistSignupPhoneRuntimeState({
+          signupPhoneNumber: signupActivation.phoneNumber,
+          signupPhoneActivation: signupActivation,
+          signupPhoneVerificationRequestedAt: null,
+          signupPhoneVerificationPurpose: 'signup',
+          signupPhoneNeedsReplacement: false,
+          signupPhoneReplacementReason: '',
+          accountIdentifierType: 'phone',
+          accountIdentifier: signupActivation.phoneNumber,
+        });
+        await addLog(`步骤 2：订单内换号完成，新注册手机号 ${signupActivation.phoneNumber}。`, 'info');
         return signupActivation;
       });
     }
@@ -6836,6 +6892,7 @@
       prepareLoginPhoneActivation,
       prepareSignupPhoneActivation,
       reactivatePhoneActivation,
+      replaceSignupPhoneActivation,
       requestPhoneActivation,
       waitForLoginPhoneCode,
       waitForSignupPhoneCode,

@@ -372,6 +372,12 @@
         if (Object.prototype.hasOwnProperty.call(payload, 'signupPhoneActivation')) {
           updates.signupPhoneActivation = payload.signupPhoneActivation || null;
         }
+        if (Object.prototype.hasOwnProperty.call(payload, 'signupPhoneNeedsReplacement')) {
+          updates.signupPhoneNeedsReplacement = Boolean(payload.signupPhoneNeedsReplacement);
+        }
+        if (Object.prototype.hasOwnProperty.call(payload, 'signupPhoneReplacementReason')) {
+          updates.signupPhoneReplacementReason = String(payload.signupPhoneReplacementReason || '').trim();
+        }
         if (Object.prototype.hasOwnProperty.call(payload, 'signupPhoneCompletedActivation')) {
           updates.signupPhoneCompletedActivation = payload.signupPhoneCompletedActivation || null;
         }
@@ -394,6 +400,8 @@
           signupPhoneCompletedActivation: null,
           signupPhoneVerificationRequestedAt: null,
           signupPhoneVerificationPurpose: '',
+          signupPhoneNeedsReplacement: false,
+          signupPhoneReplacementReason: '',
           ...(email ? {
             accountIdentifierType: 'email',
             accountIdentifier: email,
@@ -549,6 +557,8 @@
             currentPhoneVerificationCode: '',
             signupPhoneVerificationRequestedAt: null,
             signupPhoneVerificationPurpose: '',
+            signupPhoneNeedsReplacement: false,
+            signupPhoneReplacementReason: '',
           } : {
             lastEmailTimestamp: payload.emailTimestamp || null,
           }),
@@ -642,6 +652,8 @@
               currentPhoneVerificationCode: '',
               signupPhoneVerificationRequestedAt: null,
               signupPhoneVerificationPurpose: '',
+              signupPhoneNeedsReplacement: false,
+              signupPhoneReplacementReason: '',
             } : {
               lastEmailTimestamp: payload.emailTimestamp || null,
             }),
@@ -666,6 +678,8 @@
               currentPhoneVerificationCode: '',
               signupPhoneVerificationRequestedAt: null,
               signupPhoneVerificationPurpose: '',
+              signupPhoneNeedsReplacement: false,
+              signupPhoneReplacementReason: '',
             } : {
               lastEmailTimestamp: payload.emailTimestamp || null,
             }),

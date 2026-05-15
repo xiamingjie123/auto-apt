@@ -1022,6 +1022,8 @@ const DEFAULT_STATE = {
   signupPhoneCompletedActivation: null,
   signupPhoneVerificationRequestedAt: null,
   signupPhoneVerificationPurpose: '',
+  signupPhoneNeedsReplacement: false,
+  signupPhoneReplacementReason: '',
   heroSmsLastPriceTiers: [],
   heroSmsLastPriceCountryId: 0,
   heroSmsLastPriceCountryLabel: '',
@@ -3215,6 +3217,8 @@ async function setEmailStateSilently(email, options = {}) {
     updates.signupPhoneCompletedActivation = null;
     updates.signupPhoneVerificationRequestedAt = null;
     updates.signupPhoneVerificationPurpose = '';
+    updates.signupPhoneNeedsReplacement = false;
+    updates.signupPhoneReplacementReason = '';
   } else if (String(currentState?.accountIdentifierType || '').trim().toLowerCase() === 'email') {
     updates.accountIdentifierType = null;
     updates.accountIdentifier = '';
@@ -3288,6 +3292,8 @@ async function setSignupPhoneStateSilently(phoneNumber) {
       updates.signupPhoneActivation = null;
       updates.signupPhoneVerificationRequestedAt = null;
       updates.signupPhoneVerificationPurpose = '';
+      updates.signupPhoneNeedsReplacement = false;
+      updates.signupPhoneReplacementReason = '';
     }
     if (!isPhoneActivationForNumber(currentState?.signupPhoneCompletedActivation, normalizedPhoneNumber)) {
       updates.signupPhoneCompletedActivation = null;
@@ -3299,6 +3305,8 @@ async function setSignupPhoneStateSilently(phoneNumber) {
     updates.signupPhoneCompletedActivation = null;
     updates.signupPhoneVerificationRequestedAt = null;
     updates.signupPhoneVerificationPurpose = '';
+    updates.signupPhoneNeedsReplacement = false;
+    updates.signupPhoneReplacementReason = '';
   }
 
   await setState(updates);
@@ -8085,6 +8093,12 @@ function getSignupPhonePasswordMismatchRestartPayload(preservedState = {}) {
     ?? activation?.phone
     ?? ''
   ).trim();
+  const getActivationId = (activation) => String(
+    activation?.activationId
+    ?? activation?.id
+    ?? activation?.activation
+    ?? ''
+  ).trim();
   const phoneNumbersMatchForRestart = (left, right) => {
     const leftDigits = String(left || '').replace(/\D+/g, '');
     const rightDigits = String(right || '').replace(/\D+/g, '');
@@ -8119,14 +8133,25 @@ function getSignupPhonePasswordMismatchRestartPayload(preservedState = {}) {
   );
   const restorePayload = {};
   let shouldClearSignupPhoneReuseRecords = false;
+  const signupActivationForReplacement = (
+    getActivationId(preservedState.signupPhoneActivation)
+    && getActivationPhoneNumber(preservedState.signupPhoneActivation)
+  )
+    ? preservedState.signupPhoneActivation
+    : null;
+  const shouldReplaceSignupPhoneActivation = Boolean(signupActivationForReplacement);
   if (preservedEmail) restorePayload.email = preservedEmail;
   if (preservedPassword) restorePayload.password = preservedPassword;
   if (shouldClearSignupPhoneRuntime) {
     restorePayload.signupPhoneNumber = '';
-    restorePayload.signupPhoneActivation = null;
+    restorePayload.signupPhoneActivation = signupActivationForReplacement || null;
     restorePayload.signupPhoneCompletedActivation = null;
     restorePayload.signupPhoneVerificationRequestedAt = null;
     restorePayload.signupPhoneVerificationPurpose = '';
+    restorePayload.signupPhoneNeedsReplacement = shouldReplaceSignupPhoneActivation;
+    restorePayload.signupPhoneReplacementReason = shouldReplaceSignupPhoneActivation
+      ? 'signup_phone_step_failure'
+      : '';
     if (accountIdentifierType === 'phone') {
       restorePayload.accountIdentifierType = null;
       restorePayload.accountIdentifier = '';
@@ -8168,6 +8193,7 @@ function getSignupPhonePasswordMismatchRestartPayload(preservedState = {}) {
     restorePayload,
     shouldClearSignupPhoneRuntime,
     shouldClearSignupPhoneReuseRecords,
+    shouldReplaceSignupPhoneActivation,
   };
 }
 
@@ -8179,6 +8205,7 @@ async function restartSignupPhonePasswordMismatchAttemptFromStep(step, restartCo
     restorePayload,
     shouldClearSignupPhoneRuntime,
     shouldClearSignupPhoneReuseRecords,
+    shouldReplaceSignupPhoneActivation,
   } = getSignupPhonePasswordMismatchRestartPayload(preservedState);
   const emailSuffix = preservedEmail ? `当前邮箱：${preservedEmail}；` : '';
   const phoneSuffix = activeSignupPhoneNumber ? `当前手机号：${activeSignupPhoneNumber}；` : '';
@@ -8191,15 +8218,25 @@ async function restartSignupPhonePasswordMismatchAttemptFromStep(step, restartCo
       .test(errorMessage)
       ? '注册手机号异常'
       : '手机号/密码不匹配'));
+  const restartActionText = shouldReplaceSignupPhoneActivation
+    ? `准备回到步骤 1 重新开始，并在下一轮步骤 2 按步骤 9 的换号流程处理当前接码订单（第 ${restartCount} 次重开）`
+    : `准备清空当前注册手机号并回到步骤 1 重新开始（第 ${restartCount} 次重开）`;
   await addLog(
-    `步骤 ${step}：检测到${reasonLabel}，准备丢弃当前注册手机号并回到步骤 1 重新开始（第 ${restartCount} 次重开）。${phoneSuffix}${emailSuffix}原因：${errorMessage}`,
+    `步骤 ${step}：检测到${reasonLabel}，${restartActionText}。${phoneSuffix}${emailSuffix}原因：${errorMessage}`,
     'warn'
   );
   await invalidateDownstreamAfterStepRestart(1, {
-    logLabel: `步骤 ${step} 检测到${reasonLabel}后准备回到步骤 1 重新获取手机号重试（第 ${restartCount} 次重开）`,
+    logLabel: shouldReplaceSignupPhoneActivation
+      ? `步骤 ${step} 检测到${reasonLabel}后准备回到步骤 1，并在下一轮步骤 2 按步骤 9 换号流程重试（第 ${restartCount} 次重开）`
+      : `步骤 ${step} 检测到${reasonLabel}后准备回到步骤 1 重新获取手机号重试（第 ${restartCount} 次重开）`,
   });
   if (shouldClearSignupPhoneRuntime) {
-    await addLog(`步骤 ${step}：已清空本轮注册手机号与接码订单，下一次重开将重新获取号码。`, 'warn');
+    await addLog(
+      shouldReplaceSignupPhoneActivation
+        ? `步骤 ${step}：已保留当前接码订单并标记下一轮步骤 2 在订单内换号，不会重新创建接码订单。`
+        : `步骤 ${step}：未找到可订单内换号的接码订单，下一次重开将重新获取号码。`,
+      'warn'
+    );
   }
   if (shouldClearSignupPhoneReuseRecords) {
     await addLog(`步骤 ${step}：已移除当前注册手机号的复用记录，下一次重开会切换新手机号。`, 'warn');
@@ -9294,6 +9331,8 @@ async function handleStepData(step, payload) {
           accountIdentifier: String(payload.accountIdentifier || '').trim(),
           signupPhoneNumber: String(payload.signupPhoneNumber || '').trim(),
           signupPhoneActivation: payload.signupPhoneActivation || null,
+          signupPhoneNeedsReplacement: false,
+          signupPhoneReplacementReason: '',
         });
       }
       if (payload.skippedPasswordStep) {
@@ -9330,10 +9369,12 @@ async function handleStepData(step, payload) {
       break;
     case 4:
       await setState({
-    ...(payload.phoneVerification ? {
+        ...(payload.phoneVerification ? {
           currentPhoneVerificationCode: '',
           signupPhoneVerificationRequestedAt: null,
           signupPhoneVerificationPurpose: '',
+          signupPhoneNeedsReplacement: false,
+          signupPhoneReplacementReason: '',
         } : {
           lastEmailTimestamp: payload.emailTimestamp || null,
         }),
@@ -9346,6 +9387,8 @@ async function handleStepData(step, payload) {
           currentPhoneVerificationCode: '',
           signupPhoneVerificationRequestedAt: null,
           signupPhoneVerificationPurpose: '',
+          signupPhoneNeedsReplacement: false,
+          signupPhoneReplacementReason: '',
         } : {
           lastEmailTimestamp: payload.emailTimestamp || null,
         }),
