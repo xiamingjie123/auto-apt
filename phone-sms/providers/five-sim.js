@@ -358,6 +358,14 @@
   }
 
   function resolveCountryCandidates(state = {}) {
+    const orderedCountries = normalizeFiveSimCountryFallback(state.fiveSimCountryOrder);
+    if (orderedCountries.length) {
+      return orderedCountries.map((entry) => ({
+        id: entry.id,
+        label: formatFiveSimCountryLabel(entry.id, entry.label || entry.id, entry.id),
+      }));
+    }
+
     const primary = resolveCountryConfig(state);
     const fallbackList = normalizeFiveSimCountryFallback(state.fiveSimCountryFallback);
     const seen = new Set([primary.id]);
