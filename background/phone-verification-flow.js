@@ -342,11 +342,25 @@
     }
 
     function normalizePhoneReplacementLimit(value) {
-      const parsed = Math.floor(Number(value));
-      if (!Number.isFinite(parsed) || parsed <= 0) {
+      const rawValue = String(value ?? '').trim();
+      const parsed = Math.floor(Number(rawValue));
+      if (!rawValue || !Number.isFinite(parsed)) {
         return DEFAULT_PHONE_NUMBER_REPLACEMENT_LIMIT;
       }
+      if (parsed <= 0) {
+        return 0;
+      }
       return Math.max(1, Math.min(20, parsed));
+    }
+
+    function isUnlimitedPhoneReplacementLimit(limit) {
+      return Math.floor(Number(limit) || 0) <= 0;
+    }
+
+    function formatPhoneReplacementProgress(usedCount, limit) {
+      return isUnlimitedPhoneReplacementLimit(limit)
+        ? `${usedCount}/无限`
+        : `${usedCount}/${limit}`;
     }
 
     function normalizePhoneActivationRetryRounds(value) {
@@ -1520,9 +1534,10 @@
     function buildPhoneReplacementLimitError(maxNumberReplacementAttempts, reason = '') {
       const safeMax = Math.max(0, Math.floor(Number(maxNumberReplacementAttempts) || 0));
       const safeReason = String(reason || 'unknown').trim() || 'unknown';
+      const limitText = isUnlimitedPhoneReplacementLimit(safeMax) ? '无限' : String(safeMax);
       return new Error(
-        `步骤 9：更换 ${safeMax} 次号码后手机号验证仍未成功。最后原因：${safeReason}. `
-        + `Step 9: phone verification did not succeed after ${safeMax} number replacements. Last reason: ${safeReason}.`
+        `步骤 9：更换 ${limitText} 次号码后手机号验证仍未成功。最后原因：${safeReason}. `
+        + `Step 9: phone verification did not succeed after ${limitText} number replacements. Last reason: ${safeReason}.`
       );
     }
 
@@ -6326,11 +6341,11 @@
       const rotateActivationAfterAddPhoneFailure = async (failureReason, failureCode, submitState = {}) => {
         await markPreferredActivationExhausted(failureCode || failureReason);
         usedNumberReplacementAttempts += 1;
-        if (usedNumberReplacementAttempts > maxNumberReplacementAttempts) {
+        if (!isUnlimitedPhoneReplacementLimit(maxNumberReplacementAttempts) && usedNumberReplacementAttempts > maxNumberReplacementAttempts) {
           throw buildPhoneReplacementLimitError(maxNumberReplacementAttempts, failureCode || 'add_phone_rejected');
         }
         await addLog(
-          `Step 9: replacing number after add-phone failure (${failureReason}) (${usedNumberReplacementAttempts}/${maxNumberReplacementAttempts}).`,
+          `Step 9: replacing number after add-phone failure (${failureReason}) (${formatPhoneReplacementProgress(usedNumberReplacementAttempts, maxNumberReplacementAttempts)}).`,
           'warn'
         );
         if (shouldCancelActivation && activation) {
@@ -6413,11 +6428,11 @@
               addPhoneReentryWithSameActivation += 1;
               if (addPhoneReentryWithSameActivation > 1) {
                 usedNumberReplacementAttempts += 1;
-                if (usedNumberReplacementAttempts > maxNumberReplacementAttempts) {
+                if (!isUnlimitedPhoneReplacementLimit(maxNumberReplacementAttempts) && usedNumberReplacementAttempts > maxNumberReplacementAttempts) {
                   throw buildPhoneReplacementLimitError(maxNumberReplacementAttempts, 'returned_to_add_phone_loop');
                 }
                 await addLog(
-                  `步骤 9：当前号码 ${activation.phoneNumber} 反复返回添加手机号页，正在更换号码（${usedNumberReplacementAttempts}/${maxNumberReplacementAttempts}）。`,
+                  `步骤 9：当前号码 ${activation.phoneNumber} 反复返回添加手机号页，正在更换号码（${formatPhoneReplacementProgress(usedNumberReplacementAttempts, maxNumberReplacementAttempts)}）。`,
                   'warn'
                 );
                 if (isFreeAutoReuseActivation(activation)) {
@@ -6465,14 +6480,14 @@
               const addPhoneRejectText = String(submitResult.errorText || submitResult.url || 'unknown error');
               if (isPhoneNumberUsedError(addPhoneRejectText)) {
                 usedNumberReplacementAttempts += 1;
-                if (usedNumberReplacementAttempts > maxNumberReplacementAttempts) {
+                if (!isUnlimitedPhoneReplacementLimit(maxNumberReplacementAttempts) && usedNumberReplacementAttempts > maxNumberReplacementAttempts) {
                   throw new Error(
-                    `步骤 9：更换 ${maxNumberReplacementAttempts} 次号码后手机号验证仍未成功。最后原因：${formatStep9Reason('phone_number_used')}。`
+                    `步骤 9：更换 ${isUnlimitedPhoneReplacementLimit(maxNumberReplacementAttempts) ? '无限' : maxNumberReplacementAttempts} 次号码后手机号验证仍未成功。最后原因：${formatStep9Reason('phone_number_used')}。`
                   );
                 }
 
                 await addLog(
-                  `步骤 9：添加手机号页面提示 ${activation.phoneNumber} 已被使用（${addPhoneRejectText}），正在更换号码（${usedNumberReplacementAttempts}/${maxNumberReplacementAttempts}）。`,
+                  `步骤 9：添加手机号页面提示 ${activation.phoneNumber} 已被使用（${addPhoneRejectText}），正在更换号码（${formatPhoneReplacementProgress(usedNumberReplacementAttempts, maxNumberReplacementAttempts)}）。`,
                   'warn'
                 );
                 await discardPhoneActivationFromReuse(
@@ -6787,7 +6802,7 @@
           await markPreferredActivationExhausted(replaceReason || 'replace_number');
 
           usedNumberReplacementAttempts += 1;
-          if (usedNumberReplacementAttempts > maxNumberReplacementAttempts) {
+          if (!isUnlimitedPhoneReplacementLimit(maxNumberReplacementAttempts) && usedNumberReplacementAttempts > maxNumberReplacementAttempts) {
             throw buildPhoneReplacementLimitError(maxNumberReplacementAttempts, replaceReason || 'unknown');
           }
 
@@ -6845,7 +6860,7 @@
           };
 
           await addLog(
-            `步骤 9：正在更换号码并在步骤 9 内重试（${usedNumberReplacementAttempts}/${maxNumberReplacementAttempts}）。`,
+            `步骤 9：正在更换号码并在步骤 9 内重试（${formatPhoneReplacementProgress(usedNumberReplacementAttempts, maxNumberReplacementAttempts)}）。`,
             'warn'
           );
           pageState = {

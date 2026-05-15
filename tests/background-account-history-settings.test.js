@@ -90,9 +90,10 @@ const DEFAULT_ACCOUNT_RUN_HISTORY_HELPER_BASE_URL = DEFAULT_HOTMAIL_LOCAL_BASE_U
 const DEFAULT_HOTMAIL_REMOTE_BASE_URL = '';
 const DEFAULT_CODEX2API_URL = 'http://localhost:8080/admin/accounts';
 const DEFAULT_VERIFICATION_RESEND_COUNT = 4;
-const PHONE_REPLACEMENT_LIMIT_MIN = 1;
+const PHONE_REPLACEMENT_LIMIT_UNLIMITED = 0;
+const PHONE_REPLACEMENT_LIMIT_MIN = 0;
 const PHONE_REPLACEMENT_LIMIT_MAX = 20;
-const DEFAULT_PHONE_VERIFICATION_REPLACEMENT_LIMIT = 3;
+const DEFAULT_PHONE_VERIFICATION_REPLACEMENT_LIMIT = PHONE_REPLACEMENT_LIMIT_UNLIMITED;
 const PHONE_CODE_WAIT_SECONDS_MIN = 15;
 const PHONE_CODE_WAIT_SECONDS_MAX = 300;
 const DEFAULT_PHONE_CODE_WAIT_SECONDS = 60;
@@ -228,8 +229,9 @@ return {
   assert.equal(api.normalizePersistentSettingValue('gopayHelperLocalSmsPollIntervalSeconds', '0'), 1);
   assert.equal(api.normalizePersistentSettingValue('verificationResendCount', '7'), 7);
   assert.equal(api.normalizePersistentSettingValue('verificationResendCount', '-1'), 0);
+  assert.equal(api.normalizePersistentSettingValue('phoneVerificationReplacementLimit', '0'), 0);
   assert.equal(api.normalizePersistentSettingValue('phoneVerificationReplacementLimit', '9'), 9);
-  assert.equal(api.normalizePersistentSettingValue('phoneVerificationReplacementLimit', '-1'), 1);
+  assert.equal(api.normalizePersistentSettingValue('phoneVerificationReplacementLimit', '-1'), 0);
   assert.equal(api.normalizePersistentSettingValue('phoneCodeWaitSeconds', '75'), 75);
   assert.equal(api.normalizePersistentSettingValue('phoneCodeTimeoutWindows', '3'), 3);
   assert.equal(api.normalizePersistentSettingValue('phoneCodePollIntervalSeconds', '6'), 6);
