@@ -568,7 +568,7 @@ const AUTO_DELAY_DEFAULT_MINUTES = 30;
 const AUTO_FALLBACK_THREAD_INTERVAL_MIN_MINUTES = 0;
 const AUTO_FALLBACK_THREAD_INTERVAL_MAX_MINUTES = 1440;
 const AUTO_FALLBACK_THREAD_INTERVAL_DEFAULT_MINUTES = 0;
-const AUTO_RUN_MAX_RETRIES_PER_ROUND = 3;
+const AUTO_RUN_MAX_RETRIES_PER_ROUND = Number.MAX_SAFE_INTEGER;
 const AUTO_STEP_DELAY_MIN_SECONDS = 0;
 const AUTO_STEP_DELAY_MAX_SECONDS = 600;
 const VERIFICATION_RESEND_COUNT_MIN = 0;
@@ -2001,7 +2001,7 @@ async function confirmCpaPhoneSignupIfNeeded(options = {}) {
 async function openAutoSkipFailuresConfirmModal() {
   const result = await openConfirmModalWithOption({
     title: '自动重试说明',
-    message: `开启后，自动模式在某一轮失败时，会先在当前轮自动重试；单轮最多重试 ${AUTO_RUN_MAX_RETRIES_PER_ROUND} 次，仍失败则放弃当前轮并继续下一轮。线程间隔只在开启自动重试且总轮数大于 1 时生效。`,
+    message: '开启后，自动模式在某一轮失败时，会先在当前轮持续自动重试，不设次数上限；线程间隔只在开启自动重试且总轮数大于 1 时生效。',
     confirmLabel: '确认开启',
   });
 

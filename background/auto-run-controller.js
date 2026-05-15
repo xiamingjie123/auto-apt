@@ -464,8 +464,8 @@
         let reuseExistingProgress = resumingCurrentRound;
         const currentRoundState = await getState();
         const keepSameEmailUntilAddPhone = autoRunSkipFailures && shouldKeepCustomMailProviderPoolEmail(currentRoundState);
-        const maxAttemptsForRound = autoRunSkipFailures
-          ? (keepSameEmailUntilAddPhone ? Number.MAX_SAFE_INTEGER : AUTO_RUN_MAX_RETRIES_PER_ROUND + 1)
+      const maxAttemptsForRound = autoRunSkipFailures
+          ? Number.MAX_SAFE_INTEGER
           : Math.max(1, attemptRun);
 
         while (attemptRun <= maxAttemptsForRound) {
@@ -870,7 +870,7 @@
               await addLog(
                 keepSameEmailUntilAddPhone
                   ? `自动重试：${Math.round(AUTO_RUN_RETRY_DELAY_MS / 1000)} 秒后继续使用当前邮箱，开始第 ${targetRun}/${totalRuns} 轮第 ${attemptRun + 1} 次尝试。`
-                  : `自动重试：${Math.round(AUTO_RUN_RETRY_DELAY_MS / 1000)} 秒后开始第 ${targetRun}/${totalRuns} 轮第 ${attemptRun + 1} 次尝试（第 ${retryIndex}/${AUTO_RUN_MAX_RETRIES_PER_ROUND} 次重试）。`,
+                  : `自动重试：${Math.round(AUTO_RUN_RETRY_DELAY_MS / 1000)} 秒后开始第 ${targetRun}/${totalRuns} 轮第 ${attemptRun + 1} 次尝试（当前已重试 ${retryIndex} 次）。`,
                 'warn'
               );
               try {
@@ -941,8 +941,8 @@
             await addLog(`第 ${targetRun}/${totalRuns} 轮最终失败：${reason}`, 'error');
             await addLog(
               targetRun < totalRuns
-                ? `第 ${targetRun}/${totalRuns} 轮已达到 ${AUTO_RUN_MAX_RETRIES_PER_ROUND} 次重试上限，继续下一轮。`
-                : `第 ${targetRun}/${totalRuns} 轮已达到 ${AUTO_RUN_MAX_RETRIES_PER_ROUND} 次重试上限，本次自动运行结束。`,
+                ? `第 ${targetRun}/${totalRuns} 轮已停止重试，继续下一轮。`
+                : `第 ${targetRun}/${totalRuns} 轮已停止重试，本次自动运行结束。`,
               'warn'
             );
             cancelPendingCommands('当前轮已达到重试上限。');
