@@ -292,23 +292,11 @@
     }
 
     function resolveFiveSimCountryCandidates(state = {}) {
-      let codes = normalizeFiveSimCountryOrder(state?.fiveSimCountryOrder);
-      if (!codes.length) {
-        const legacyPrimary = normalizeFiveSimCountryCode(state?.fiveSimCountryId, '');
-        const legacyFallback = normalizeFiveSimCountryOrder(state?.fiveSimCountryFallback);
-        codes = normalizeFiveSimCountryOrder([
-          ...(legacyPrimary ? [legacyPrimary] : []),
-          ...legacyFallback,
-        ]);
-      }
+      const codes = normalizeFiveSimCountryOrder(state?.fiveSimCountryOrder);
       return codes.map((code) => ({
         code,
         id: code,
-        label: (
-          code === normalizeFiveSimCountryCode(state?.fiveSimCountryId, '')
-            ? normalizeCountryLabel(state?.fiveSimCountryLabel, code)
-            : code
-        ),
+        label: code,
       }));
     }
 

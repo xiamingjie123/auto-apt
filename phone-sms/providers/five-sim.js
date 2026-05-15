@@ -349,41 +349,20 @@
   }
 
   function resolveCountryConfig(state = {}) {
-    const rawCountryId = normalizeFiveSimCountryId(state.fiveSimCountryId, '');
-    const id = rawCountryId || DEFAULT_COUNTRY_ID;
+    const primary = normalizeFiveSimCountryFallback(state.fiveSimCountryOrder)[0];
+    const id = primary?.id || DEFAULT_COUNTRY_ID;
     return {
       id,
-      label: formatFiveSimCountryLabel(id, state.fiveSimCountryLabel || id, DEFAULT_COUNTRY_LABEL),
+      label: formatFiveSimCountryLabel(id, primary?.label || id, DEFAULT_COUNTRY_LABEL),
     };
   }
 
   function resolveCountryCandidates(state = {}) {
     const orderedCountries = normalizeFiveSimCountryFallback(state.fiveSimCountryOrder);
-    if (orderedCountries.length) {
-      return orderedCountries.map((entry) => ({
-        id: entry.id,
-        label: formatFiveSimCountryLabel(entry.id, entry.label || entry.id, entry.id),
-      }));
-    }
-
-    const primary = resolveCountryConfig(state);
-    const fallbackList = normalizeFiveSimCountryFallback(state.fiveSimCountryFallback);
-    const seen = new Set([primary.id]);
-    const candidates = [primary];
-
-    fallbackList.forEach((entry) => {
-      const nextId = normalizeFiveSimCountryId(entry.id, '');
-      if (!nextId || seen.has(nextId)) {
-        return;
-      }
-      seen.add(nextId);
-      candidates.push({
-        id: nextId,
-        label: formatFiveSimCountryLabel(nextId, entry.label || nextId, nextId),
-      });
-    });
-
-    return candidates;
+    return orderedCountries.map((entry) => ({
+      id: entry.id,
+      label: formatFiveSimCountryLabel(entry.id, entry.label || entry.id, entry.id),
+    }));
   }
 
   async function fetchBalance(state = {}, deps = {}) {
@@ -641,6 +620,9 @@
           'warn'
         );
       }
+    }
+    if (!countryCandidates.length) {
+      throw new Error('5sim 未设置候选国家，请先在侧边栏选择并保存 5sim 国家。');
     }
 
     const acquirePriority = String(state?.heroSmsAcquirePriority || 'country').trim().toLowerCase() === 'price' ? 'price' : 'country';
