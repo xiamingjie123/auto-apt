@@ -190,7 +190,7 @@ test('normalizePersistentSettingValue handles icloud settings', () => {
   assert.equal(api.normalizePersistentSettingValue('icloudTargetMailboxType', 'forward-mailbox'), 'forward-mailbox');
   assert.equal(api.normalizePersistentSettingValue('icloudTargetMailboxType', 'wrong'), 'icloud-inbox');
   assert.equal(api.normalizePersistentSettingValue('icloudForwardMailProvider', 'GMAIL'), 'gmail');
-  assert.equal(api.normalizePersistentSettingValue('icloudForwardMailProvider', 'unknown'), 'qq');
+  assert.equal(api.normalizePersistentSettingValue('icloudForwardMailProvider', 'unknown'), 'gmail');
   assert.equal(api.normalizePersistentSettingValue('autoDeleteUsedIcloudAlias', 1), true);
   assert.equal(api.normalizePersistentSettingValue('verificationResendCount', '6'), 6);
   assert.equal(api.normalizePersistentSettingValue('verificationResendCount', 99), 20);

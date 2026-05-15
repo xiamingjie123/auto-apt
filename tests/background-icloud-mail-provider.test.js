@@ -67,6 +67,12 @@ const CLOUDFLARE_TEMP_EMAIL_PROVIDER = 'cloudflare-temp-email';
 const getSharedIcloudForwardMailConfig = shared.getIcloudForwardMailConfig;
 const normalizeIcloudTargetMailboxType = shared.normalizeIcloudTargetMailboxType;
 const normalizeIcloudForwardMailProvider = shared.normalizeIcloudForwardMailProvider;
+function normalizeMailProvider(value) {
+  const normalized = String(value || '').trim().toLowerCase();
+  return [ICLOUD_PROVIDER, GMAIL_PROVIDER, HOTMAIL_PROVIDER, LUCKMAIL_PROVIDER, CLOUDFLARE_TEMP_EMAIL_PROVIDER, 'cloudmail', 'inbucket', '2925'].includes(normalized)
+    ? normalized
+    : LUCKMAIL_PROVIDER;
+}
 function normalizeIcloudHost(value = '') {
   const normalized = String(value || '').trim().toLowerCase();
   return normalized === 'icloud.com' || normalized === 'icloud.com.cn' ? normalized : '';
@@ -99,13 +105,16 @@ const GMAIL_PROVIDER = 'gmail';
 const HOTMAIL_PROVIDER = 'hotmail-api';
 const LUCKMAIL_PROVIDER = 'luckmail-api';
 const CLOUDFLARE_TEMP_EMAIL_PROVIDER = 'cloudflare-temp-email';
-const PERSISTED_SETTING_DEFAULTS = { mailProvider: '163' };
+const CLOUD_MAIL_PROVIDER = 'cloudmail';
+const PERSISTED_SETTING_DEFAULTS = { mailProvider: 'luckmail-api' };
 ${bundle}
 return { normalizeMailProvider };
 `)();
 
   assert.equal(api.normalizeMailProvider('icloud'), 'icloud');
   assert.equal(api.normalizeMailProvider('ICLOUD'), 'icloud');
+  assert.equal(api.normalizeMailProvider('163'), 'luckmail-api');
+  assert.equal(api.normalizeMailProvider('qq'), 'luckmail-api');
 });
 
 test('getMailConfig returns icloud mail tab config with host preference', () => {

@@ -74,7 +74,7 @@ return {
 
   assert.equal(api.getRunCountValue(), 88);
   api.setValue('0');
-  assert.equal(api.getRunCountValue(), 1);
+  assert.equal(api.getRunCountValue(), 0);
 });
 
 test('sidepanel idle auto-run status does not reset manual run count input', () => {

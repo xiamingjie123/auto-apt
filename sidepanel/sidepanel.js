@@ -1399,7 +1399,7 @@ const normalizeIcloudForwardMailProvider = window.MailProviderUtils?.normalizeIc
     const options = getIcloudForwardMailProviderOptions();
     return options.some((option) => option.value === normalized)
       ? normalized
-      : (options[0]?.value || 'qq');
+      : (options[0]?.value || GMAIL_PROVIDER);
   });
 const ICLOUD_FORWARD_MAIL_PROVIDER_LABELS = Object.fromEntries(
   getIcloudForwardMailProviderOptions().map((option) => [option.value, option.label])
@@ -1416,26 +1416,6 @@ const MAIL_PROVIDER_LOGIN_CONFIGS = {
   [GMAIL_PROVIDER]: {
     label: 'Gmail 邮箱',
     url: 'https://mail.google.com/mail/u/0/#inbox',
-    buttonLabel: '登录',
-  },
-  '163': {
-    label: '163 邮箱',
-    url: 'https://mail.163.com/',
-    buttonLabel: '登录',
-  },
-  '163-vip': {
-    label: '163 VIP 邮箱',
-    url: 'https://webmail.vip.163.com/',
-    buttonLabel: '登录',
-  },
-  '126': {
-    label: '126 邮箱',
-    url: 'https://mail.126.com/',
-    buttonLabel: '登录',
-  },
-  qq: {
-    label: 'QQ 邮箱',
-    url: 'https://wx.mail.qq.com/',
     buttonLabel: '登录',
   },
   'cloudflare-temp-email': {
@@ -8698,7 +8678,13 @@ async function saveSettings(options = {}) {
 async function persistCurrentSettingsForAction() {
   clearTimeout(settingsAutoSaveTimer);
   await waitForSettingsSaveIdle();
-  if (getSelectedPhoneSmsProvider() === PHONE_SMS_PROVIDER_FIVE_SIM) {
+  const selectedPhoneSmsProvider = typeof getSelectedPhoneSmsProvider === 'function'
+    ? getSelectedPhoneSmsProvider()
+    : '';
+  const fiveSimProviderValue = typeof PHONE_SMS_PROVIDER_FIVE_SIM !== 'undefined'
+    ? PHONE_SMS_PROVIDER_FIVE_SIM
+    : '5sim';
+  if (selectedPhoneSmsProvider === fiveSimProviderValue) {
     // 业务说明：
     // 自动开始前强制把 5sim 当前国家选择与内存顺序做一次最终对齐，
     // 防止“刚切完国家马上点自动”时，保存链路读到旧的国家顺序。
@@ -9174,12 +9160,12 @@ function applySettingsState(state) {
   inputCodex2ApiUrl.value = state?.codex2apiUrl || '';
   inputCodex2ApiAdminKey.value = state?.codex2apiAdminKey || '';
   const restoredMailProvider = isCustomMailProvider(state?.mailProvider)
-    || [ICLOUD_PROVIDER, 'hotmail-api', GMAIL_PROVIDER, 'luckmail-api', '163', '163-vip', '126', 'qq', 'inbucket', '2925', 'cloudflare-temp-email', 'cloudmail'].includes(String(state?.mailProvider || '').trim())
-    ? String(state?.mailProvider || '163').trim()
+    || [ICLOUD_PROVIDER, 'hotmail-api', GMAIL_PROVIDER, LUCKMAIL_PROVIDER, 'inbucket', '2925', 'cloudflare-temp-email', 'cloudmail'].includes(String(state?.mailProvider || '').trim())
+    ? String(state?.mailProvider || LUCKMAIL_PROVIDER).trim()
     : (String(state?.emailGenerator || '').trim().toLowerCase() === 'custom'
       || String(state?.emailGenerator || '').trim().toLowerCase() === 'manual'
       ? 'custom'
-      : '163');
+      : LUCKMAIL_PROVIDER);
   selectMailProvider.value = restoredMailProvider;
   setMail2925Mode(state?.mail2925Mode);
   {

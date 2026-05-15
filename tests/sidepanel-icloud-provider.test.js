@@ -255,8 +255,8 @@ let cloudflareDomainEditMode = false;
 let cloudflareTempEmailDomainEditMode = false;
 const ICLOUD_PROVIDER = 'icloud';
 const GMAIL_PROVIDER = 'gmail';
-const GMAIL_ALIAS_GENERATOR = 'gmail-alias';
 const LUCKMAIL_PROVIDER = 'luckmail-api';
+const GMAIL_ALIAS_GENERATOR = 'gmail-alias';
 const CUSTOM_EMAIL_POOL_GENERATOR = 'custom-pool';
 const HOTMAIL_SERVICE_MODE_REMOTE = 'remote';
 const HOTMAIL_SERVICE_MODE_LOCAL = 'local';
@@ -305,7 +305,7 @@ const MAIL_PROVIDER_LOGIN_CONFIGS = { gmail: { label: 'Gmail 邮箱' } };
 const ICLOUD_FORWARD_MAIL_PROVIDER_LABELS = { gmail: 'Gmail 邮箱' };
 function normalizeIcloudHost(value) { return String(value || '').trim().toLowerCase(); }
 function normalizeIcloudTargetMailboxType(value) { return String(value || '').trim().toLowerCase() === 'forward-mailbox' ? 'forward-mailbox' : 'icloud-inbox'; }
-function normalizeIcloudForwardMailProvider(value) { return String(value || '').trim().toLowerCase() === 'gmail' ? 'gmail' : 'qq'; }
+function normalizeIcloudForwardMailProvider(value) { return String(value || '').trim().toLowerCase() === 'gmail' ? 'gmail' : 'gmail'; }
 function getSelectedIcloudHostPreference() { return selectIcloudHostPreference.value; }
 function isLuckmailProvider() { return false; }
 function isCustomMailProvider() { return false; }
@@ -376,6 +376,7 @@ const inputCodex2ApiUrl = { value: '' };
 const inputCodex2ApiAdminKey = { value: '' };
 const ICLOUD_PROVIDER = 'icloud';
 const GMAIL_PROVIDER = 'gmail';
+const LUCKMAIL_PROVIDER = 'luckmail-api';
 const GMAIL_ALIAS_GENERATOR = 'gmail-alias';
 const CUSTOM_EMAIL_POOL_GENERATOR = 'custom-pool';
 const selectMailProvider = { value: '163' };
@@ -464,7 +465,7 @@ function isCustomMailProvider() { return false; }
 function setMail2925Mode() {}
 function normalizeIcloudFetchMode(value) { return String(value || '') === 'always_new' ? 'always_new' : 'reuse_existing'; }
 function normalizeIcloudTargetMailboxType(value) { return String(value || '').trim().toLowerCase() === 'forward-mailbox' ? 'forward-mailbox' : 'icloud-inbox'; }
-function normalizeIcloudForwardMailProvider(value) { return String(value || '').trim().toLowerCase() === 'gmail' ? 'gmail' : 'qq'; }
+function normalizeIcloudForwardMailProvider(value) { return String(value || '').trim().toLowerCase() === 'gmail' ? 'gmail' : 'gmail'; }
 function normalizeAccountRunHistoryHelperBaseUrlValue(value) { return String(value || '').trim(); }
 function setManagedAliasBaseEmailInputForProvider() {}
 function normalizeCustomEmailPoolEntries(value) { return Array.isArray(value) ? value : []; }

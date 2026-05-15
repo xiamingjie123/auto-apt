@@ -2,21 +2,14 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 
-test('manifest 为网易邮箱内容脚本覆盖 126 子域名', () => {
+test('manifest 不再注入 QQ/163/126 邮箱内容脚本', () => {
   const manifest = JSON.parse(fs.readFileSync('manifest.json', 'utf8'));
-  const mail163Script = manifest.content_scripts.find((script) => (
-    Array.isArray(script.js) && script.js.includes('content/mail-163.js')
-  ));
+  const scripts = manifest.content_scripts.flatMap((script) => script.js || []);
+  const matches = manifest.content_scripts.flatMap((script) => script.matches || []);
 
-  assert.ok(mail163Script, '应存在 mail-163 内容脚本声明');
-  assert.equal(
-    mail163Script.matches.includes('https://mail.126.com/*'),
-    true,
-    '应覆盖 mail.126.com'
-  );
-  assert.equal(
-    mail163Script.matches.includes('https://*.mail.126.com/*'),
-    true,
-    '应覆盖 *.mail.126.com'
-  );
+  assert.equal(scripts.includes('content/qq-mail.js'), false);
+  assert.equal(scripts.includes('content/mail-163.js'), false);
+  assert.equal(matches.some((pattern) => pattern.includes('mail.qq.com')), false);
+  assert.equal(matches.some((pattern) => pattern.includes('mail.163.com')), false);
+  assert.equal(matches.some((pattern) => pattern.includes('mail.126.com')), false);
 });

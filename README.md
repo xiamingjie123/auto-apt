@@ -395,7 +395,7 @@ Cloudflare 模式下，插件不会再调用 Cloudflare API 创建路由。
 也就是说，插件默认认为：
 
 - 你已经在 Cloudflare 后台把这个域名的收件转发规则配置好了
-- 这个随机前缀邮箱发来的邮件，最终能被你现有的 `163 / QQ / Inbucket` 收件链路接住
+- 这个随机前缀邮箱发来的邮件，最终能被你现有的 `Gmail / Inbucket / Cloudflare Temp Email / Cloud Mail` 收件链路接住
 
 #### 你需要自己提前做什么
 
@@ -408,12 +408,10 @@ Cloudflare 模式下，插件不会再调用 Cloudflare API 创建路由。
 
 #### 推荐搭配
 
-- `Mail = QQ Mail`：Cloudflare 的 `Destination address / Destination addresses` 填你的 QQ 邮箱全地址
-- `Mail = 163 Mail`：Cloudflare 的 `Destination address / Destination addresses` 填你的 163 邮箱全地址
-- `Mail = 163 VIP Mail`：Cloudflare 的 `Destination address / Destination addresses` 填你的 163 VIP 邮箱全地址
-- `Mail = 126 Mail`：Cloudflare 的 `Destination address / Destination addresses` 填你的 126 邮箱全地址
+- `Mail = Gmail`：Cloudflare 的 `Destination address / Destination addresses` 填你的 Gmail 邮箱全地址
 - `Mail = Inbucket`：仅当你的 Inbucket 实例本身就是一个真实可收外部邮件、且能收到 Cloudflare 验证邮件的地址时再使用
 - `Mail = Hotmail`：当前项目的自动流程不推荐和 Cloudflare 同时使用；因为 `Mail = Hotmail` 时，注册邮箱会直接使用 Hotmail 账号池邮箱
+- `Mail = LuckMail`：适合直接由 LuckMail API 购买并收码，不适合作为 Cloudflare 随机前缀转发的固定目标
 
 #### Cloudflare 后台怎么配（按钮中英对照）
 
@@ -584,9 +582,9 @@ Cloudflare 模式下，插件不会再调用 Cloudflare API 创建路由。
 
 支持：
 
+- `LuckMail`（API 购邮 / `/code` 拉码）
 - `Hotmail`（远程服务 / 本地助手）
-- `content/qq-mail.js`
-- `content/mail-163.js`（163 / 163 VIP / 126）
+- `content/gmail-mail.js`
 - `content/inbucket-mail.js`
 
 邮件匹配规则以以下关键词为主：
@@ -767,9 +765,8 @@ content/signup-page.js     ChatGPT 官网 + OpenAI 注册/登录页步骤：Step
 hotmail-utils.js           Hotmail 收信相关通用辅助
 mail-provider-utils.js     网页邮箱 provider 配置辅助
 content/duck-mail.js       Duck 邮箱自动获取
-content/qq-mail.js         QQ 邮箱验证码轮询
-content/mail-163.js        163 / 163 VIP / 126 邮箱验证码轮询
 content/inbucket-mail.js   Inbucket mailbox 验证码轮询
+luckmail-utils.js          LuckMail API 购邮、邮件游标与验证码匹配工具
 sidepanel/                 侧边栏 UI
 ```
 

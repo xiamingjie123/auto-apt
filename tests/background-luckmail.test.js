@@ -725,8 +725,23 @@ test('resetState preserves LuckMail session config, used map, and preserve tag c
     'function normalizeLuckmailUsedPurchases(value) {',
     '  return value || {};',
     '}',
+    'function normalizeMailProvider(value) {',
+    "  return String(value || '').trim().toLowerCase() === 'luckmail-api' ? 'luckmail-api' : 'luckmail-api';",
+    '}',
+    'function normalizePersistentSettingValue(key, value) {',
+    "  return key === 'mailProvider' ? normalizeMailProvider(value) : value;",
+    '}',
+    "const PERSISTED_SETTING_DEFAULTS = { mailProvider: 'luckmail-api' };",
+    "const PERSISTED_SETTING_KEYS = ['mailProvider'];",
+    'function buildPersistentSettingsPayload(input = {}) {',
+    '  const payload = {};',
+    '  for (const key of PERSISTED_SETTING_KEYS) {',
+    '    if (input[key] !== undefined) payload[key] = normalizePersistentSettingValue(key, input[key]);',
+    '  }',
+    '  return payload;',
+    '}',
     'async function getPersistedSettings() {',
-    "  return { mailProvider: '163' };",
+    "  return buildPersistentSettingsPayload({ mailProvider: '163' });",
     '}',
     'async function getPersistedAliasState() {',
     '  return {};',
@@ -777,6 +792,7 @@ test('resetState preserves LuckMail session config, used map, and preserve tag c
   const snapshot = api.snapshot();
 
   assert.equal(snapshot.cleared, true);
+  assert.equal(snapshot.storedPayload.mailProvider, 'luckmail-api');
   assert.equal(snapshot.storedPayload.luckmailApiKey, 'sk-session');
   assert.equal(snapshot.storedPayload.luckmailBaseUrl, 'https://demo.example.com');
   assert.equal(snapshot.storedPayload.luckmailEmailType, 'ms_imap');

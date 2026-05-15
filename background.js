@@ -827,7 +827,7 @@ const PERSISTED_SETTING_DEFAULTS = {
   phoneCodeTimeoutWindows: DEFAULT_PHONE_CODE_TIMEOUT_WINDOWS,
   phoneCodePollIntervalSeconds: DEFAULT_PHONE_CODE_POLL_INTERVAL_SECONDS,
   phoneCodePollMaxRounds: DEFAULT_PHONE_CODE_POLL_ROUNDS,
-  mailProvider: '163',
+  mailProvider: LUCKMAIL_PROVIDER,
   mail2925Mode: DEFAULT_MAIL_2925_MODE,
   mail2925UseAccountPool: false,
   emailGenerator: 'duck',
@@ -837,7 +837,7 @@ const PERSISTED_SETTING_DEFAULTS = {
   autoDeleteUsedIcloudAlias: false,
   icloudHostPreference: 'auto',
   icloudTargetMailboxType: 'icloud-inbox',
-  icloudForwardMailProvider: 'qq',
+  icloudForwardMailProvider: GMAIL_PROVIDER,
   icloudFetchMode: 'reuse_existing',
   accountRunHistoryTextEnabled: true,
   accountRunHistoryHelperBaseUrl: DEFAULT_ACCOUNT_RUN_HISTORY_HELPER_BASE_URL,
@@ -2203,10 +2203,6 @@ function normalizeMailProvider(value = '') {
     case LUCKMAIL_PROVIDER:
     case CLOUDFLARE_TEMP_EMAIL_PROVIDER:
     case CLOUD_MAIL_PROVIDER:
-    case '163':
-    case '163-vip':
-    case '126':
-    case 'qq':
     case 'inbucket':
     case '2925':
       return normalized;
@@ -4655,7 +4651,7 @@ function shouldUseCustomRegistrationEmail(state = {}) {
 }
 
 function buildGeneratedAliasEmail(state) {
-  const provider = state.mailProvider || '163';
+  const provider = normalizeMailProvider(state.mailProvider);
   const emailPrefix = (state.emailPrefix || '').trim();
 
   if (provider === GMAIL_PROVIDER) {
@@ -4832,7 +4828,7 @@ function isReusableGeneratedAliasEmail(state = {}, email = state?.email) {
 }
 
 function buildGeneratedAliasEmail(state) {
-  const provider = state.mailProvider || '163';
+  const provider = normalizeMailProvider(state.mailProvider);
   const baseEmail = getManagedAliasBaseEmail(state, provider);
   const baseLabel = provider === GMAIL_PROVIDER ? 'Gmail 原邮箱' : '2925 基邮箱';
   const exampleEmail = provider === GMAIL_PROVIDER ? 'name@gmail.com' : 'name@2925.com';
@@ -12143,11 +12139,11 @@ async function executeStep3(state) {
 }
 
 // ============================================================
-// Step 4: Get Signup Verification Code (qq-mail.js polls, then fills in signup-page.js)
+// Step 4: Get Signup Verification Code
 // ============================================================
 
 function getMailConfig(state) {
-  const provider = state.mailProvider || 'qq';
+  const provider = normalizeMailProvider(state.mailProvider);
   if (provider === 'custom') {
     return { provider: 'custom', label: '自定义邮箱' };
   }
@@ -12196,15 +12192,6 @@ function getMailConfig(state) {
   if (provider === 'cloudmail') {
     return { provider: 'cloudmail', label: 'Cloud Mail' };
   }
-  if (provider === '163') {
-    return { source: 'mail-163', url: 'https://mail.163.com/js6/main.jsp?df=mail163_letter#module=mbox.ListModule%7C%7B%22fid%22%3A1%2C%22order%22%3A%22date%22%2C%22desc%22%3Atrue%7D', label: '163 邮箱' };
-  }
-  if (provider === '163-vip') {
-    return { source: 'mail-163', url: 'https://webmail.vip.163.com/js6/main.jsp?df=mail163_letter#module=mbox.ListModule%7C%7B%22fid%22%3A1%2C%22order%22%3A%22date%22%2C%22desc%22%3Atrue%7D', label: '163 VIP 邮箱' };
-  }
-  if (provider === '126') {
-    return { source: 'mail-163', url: 'https://mail.126.com/js6/main.jsp?df=mail163_letter#module=mbox.ListModule%7C%7B%22fid%22%3A1%2C%22order%22%3A%22date%22%2C%22desc%22%3Atrue%7D', label: '126 邮箱' };
-  }
   if (provider === 'inbucket') {
     const host = normalizeInbucketOrigin(state.inbucketHost);
     const mailbox = (state.inbucketMailbox || '').trim();
@@ -12233,7 +12220,7 @@ function getMailConfig(state) {
       injectSource: 'mail-2925',
     };
   }
-  return { source: 'qq-mail', url: 'https://wx.mail.qq.com/', label: 'QQ 邮箱' };
+  return { provider: LUCKMAIL_PROVIDER, label: 'LuckMail（API 购邮）' };
 }
 
 function normalizeInbucketOrigin(rawValue) {

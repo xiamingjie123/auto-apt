@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 
 const {
   HOTMAIL_PROVIDER,
+  LUCKMAIL_PROVIDER,
   getIcloudForwardMailConfig,
   getIcloudForwardMailProviderOptions,
   getMailProviderConfig,
@@ -11,21 +12,26 @@ const {
   normalizeMailProvider,
 } = require('../mail-provider-utils.js');
 
-test('normalizeMailProvider accepts 126 and falls back to 163', () => {
-  assert.equal(normalizeMailProvider('126'), '126');
-  assert.equal(normalizeMailProvider('163-vip'), '163-vip');
-  assert.equal(normalizeMailProvider('unknown-provider'), '163');
+test('normalizeMailProvider removes legacy 163/QQ providers and falls back to LuckMail', () => {
+  assert.equal(normalizeMailProvider('163'), LUCKMAIL_PROVIDER);
+  assert.equal(normalizeMailProvider('163-vip'), LUCKMAIL_PROVIDER);
+  assert.equal(normalizeMailProvider('126'), LUCKMAIL_PROVIDER);
+  assert.equal(normalizeMailProvider('qq'), LUCKMAIL_PROVIDER);
+  assert.equal(normalizeMailProvider('unknown-provider'), LUCKMAIL_PROVIDER);
 });
 
-test('getMailProviderConfig returns the shared NetEase source for 126 mail', () => {
+test('getMailProviderConfig maps legacy 163/QQ providers to LuckMail', () => {
   assert.deepEqual(
     getMailProviderConfig({ mailProvider: '126' }),
     {
-      source: 'mail-163',
-      url: 'https://mail.126.com/js6/main.jsp?df=mail163_letter#module=mbox.ListModule%7C%7B%22fid%22%3A1%2C%22order%22%3A%22date%22%2C%22desc%22%3Atrue%7D',
-      label: '126 邮箱',
+      provider: LUCKMAIL_PROVIDER,
+      label: 'LuckMail（API 购邮）',
     }
   );
+  assert.deepEqual(getMailProviderConfig({ mailProvider: 'qq' }), {
+    provider: LUCKMAIL_PROVIDER,
+    label: 'LuckMail（API 购邮）',
+  });
 });
 
 test('getMailProviderConfig preserves the hotmail provider sentinel', () => {
@@ -42,18 +48,20 @@ test('iCloud forward mailbox helpers normalize and expose supported providers', 
   assert.equal(normalizeIcloudTargetMailboxType('forward-mailbox'), 'forward-mailbox');
   assert.equal(normalizeIcloudTargetMailboxType('unknown'), 'icloud-inbox');
   assert.equal(normalizeIcloudForwardMailProvider('GMAIL'), 'gmail');
-  assert.equal(normalizeIcloudForwardMailProvider('unknown'), 'qq');
+  assert.equal(normalizeIcloudForwardMailProvider('unknown'), 'gmail');
   assert.deepEqual(
     getIcloudForwardMailProviderOptions().map((option) => option.value),
-    ['qq', '163', '163-vip', '126', 'gmail']
+    ['gmail']
   );
 });
 
 test('getIcloudForwardMailConfig reuses shared mailbox provider configs', () => {
   assert.deepEqual(getIcloudForwardMailConfig('126'), {
-    source: 'mail-163',
-    url: 'https://mail.126.com/js6/main.jsp?df=mail163_letter#module=mbox.ListModule%7C%7B%22fid%22%3A1%2C%22order%22%3A%22date%22%2C%22desc%22%3Atrue%7D',
-    label: '126 邮箱',
+    source: 'gmail-mail',
+    url: 'https://mail.google.com/mail/u/0/#inbox',
+    label: 'Gmail 邮箱',
+    inject: ['content/activation-utils.js', 'content/utils.js', 'content/gmail-mail.js'],
+    injectSource: 'gmail-mail',
   });
   assert.deepEqual(getIcloudForwardMailConfig('gmail'), {
     source: 'gmail-mail',
