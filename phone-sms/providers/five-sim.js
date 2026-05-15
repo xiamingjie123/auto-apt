@@ -130,10 +130,30 @@
   function getCountryLabelFromPayload(record = {}, fallbackLabel = DEFAULT_COUNTRY_LABEL, fallbackId = DEFAULT_COUNTRY_ID) {
     if (record?.country && typeof record.country === 'object' && !Array.isArray(record.country)) {
       const countryId = normalizeFiveSimCountryId(record.country.name || record.country.id || record.country.slug || fallbackId, fallbackId);
-      return formatFiveSimCountryLabel(countryId, record.country.text_en || record.country.label || countryId, fallbackLabel || fallbackId);
+      return formatFiveSimCountryLabel(
+        countryId,
+        record.country.text_en
+        || record.country.country_name
+        || record.country.countryName
+        || record.country.name
+        || record.country.label
+        || record.country.slug
+        || countryId,
+        fallbackLabel || fallbackId
+      );
     }
     const countryId = normalizeFiveSimCountryId(record.countryId ?? record.country ?? fallbackId, fallbackId);
-    return normalizeFiveSimCountryLabel(record.countryLabel, formatFiveSimCountryLabel(countryId, countryId, fallbackLabel || fallbackId));
+    return formatFiveSimCountryLabel(
+      countryId,
+      record.countryLabel
+      || record.country_name
+      || record.countryName
+      || record.text_en
+      || record.countryTextEn
+      || record.country
+      || countryId,
+      fallbackLabel || fallbackId
+    );
   }
 
   function normalizeFiveSimCountryLabel(value = '', fallback = DEFAULT_COUNTRY_LABEL) {
