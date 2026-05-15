@@ -8079,13 +8079,36 @@ function getSignupPhonePasswordMismatchRestartPayload(preservedState = {}) {
   const preservedEmail = String(preservedState.email || '').trim();
   const preservedPassword = String(preservedState.password || '').trim();
   const accountIdentifierType = String(preservedState.accountIdentifierType || '').trim().toLowerCase();
+  const getActivationPhoneNumber = (activation) => String(
+    activation?.phoneNumber
+    ?? activation?.number
+    ?? activation?.phone
+    ?? ''
+  ).trim();
+  const phoneNumbersMatchForRestart = (left, right) => {
+    const leftDigits = String(left || '').replace(/\D+/g, '');
+    const rightDigits = String(right || '').replace(/\D+/g, '');
+    return Boolean(
+      leftDigits
+      && rightDigits
+      && (
+        leftDigits === rightDigits
+        || leftDigits.endsWith(rightDigits)
+        || rightDigits.endsWith(leftDigits)
+      )
+    );
+  };
   const activeSignupPhoneNumber = String(
     preservedState.signupPhoneNumber
-    || preservedState.signupPhoneActivation?.phoneNumber
-    || preservedState.signupPhoneCompletedActivation?.phoneNumber
+    || getActivationPhoneNumber(preservedState.signupPhoneActivation)
+    || getActivationPhoneNumber(preservedState.signupPhoneCompletedActivation)
     || (accountIdentifierType === 'phone' ? preservedState.accountIdentifier : '')
     || ''
   ).trim();
+  const matchesActiveSignupPhone = (activation) => (
+    activeSignupPhoneNumber
+    && phoneNumbersMatchForRestart(getActivationPhoneNumber(activation), activeSignupPhoneNumber)
+  );
   const shouldClearSignupPhoneRuntime = Boolean(
     activeSignupPhoneNumber
     || preservedState.signupPhoneActivation
@@ -8095,6 +8118,7 @@ function getSignupPhonePasswordMismatchRestartPayload(preservedState = {}) {
     || accountIdentifierType === 'phone'
   );
   const restorePayload = {};
+  let shouldClearSignupPhoneReuseRecords = false;
   if (preservedEmail) restorePayload.email = preservedEmail;
   if (preservedPassword) restorePayload.password = preservedPassword;
   if (shouldClearSignupPhoneRuntime) {
@@ -8108,32 +8132,65 @@ function getSignupPhonePasswordMismatchRestartPayload(preservedState = {}) {
       restorePayload.accountIdentifier = '';
     }
   }
+  if (matchesActiveSignupPhone(preservedState.currentPhoneActivation)) {
+    restorePayload.currentPhoneActivation = null;
+    restorePayload.currentPhoneVerificationCode = '';
+    shouldClearSignupPhoneReuseRecords = true;
+  }
+  if (matchesActiveSignupPhone(preservedState.reusablePhoneActivation)) {
+    restorePayload.reusablePhoneActivation = null;
+    shouldClearSignupPhoneReuseRecords = true;
+  }
+  if (matchesActiveSignupPhone(preservedState.freeReusablePhoneActivation)) {
+    restorePayload.freeReusablePhoneActivation = null;
+    shouldClearSignupPhoneReuseRecords = true;
+  }
+  if (matchesActiveSignupPhone(preservedState.phonePreferredActivation)) {
+    restorePayload.phonePreferredActivation = null;
+    shouldClearSignupPhoneReuseRecords = true;
+  }
+  if (matchesActiveSignupPhone(preservedState.pendingPhoneActivationConfirmation)) {
+    restorePayload.pendingPhoneActivationConfirmation = null;
+    shouldClearSignupPhoneReuseRecords = true;
+  }
+  if (Array.isArray(preservedState.phoneReusableActivationPool)) {
+    const nextReusablePool = preservedState.phoneReusableActivationPool.filter((activation) => (
+      !matchesActiveSignupPhone(activation)
+    ));
+    if (nextReusablePool.length !== preservedState.phoneReusableActivationPool.length) {
+      restorePayload.phoneReusableActivationPool = nextReusablePool;
+      shouldClearSignupPhoneReuseRecords = true;
+    }
+  }
   return {
     activeSignupPhoneNumber,
     preservedEmail,
     restorePayload,
     shouldClearSignupPhoneRuntime,
+    shouldClearSignupPhoneReuseRecords,
   };
 }
 
-async function restartSignupPhonePasswordMismatchAttemptFromStep(step, restartCount, error) {
+async function restartSignupPhonePasswordMismatchAttemptFromStep(step, restartCount, error, options = {}) {
   const preservedState = await getState();
   const {
     activeSignupPhoneNumber,
     preservedEmail,
     restorePayload,
     shouldClearSignupPhoneRuntime,
+    shouldClearSignupPhoneReuseRecords,
   } = getSignupPhonePasswordMismatchRestartPayload(preservedState);
   const emailSuffix = preservedEmail ? `当前邮箱：${preservedEmail}；` : '';
   const phoneSuffix = activeSignupPhoneNumber ? `当前手机号：${activeSignupPhoneNumber}；` : '';
   const errorMessage = getErrorMessage(error);
-  const reasonLabel = /PHONE_RESEND_BANNED_NUMBER::|无法向此(?:电话|手机)号码发送短信|无法发送短信到此(?:电话|手机)号码|unable\s+to\s+send\s+(?:an?\s+)?(?:sms|text(?:\s+message)?)\s+to\s+(?:this|that)\s+(?:phone\s+)?number/i
+  const explicitReasonLabel = String(options?.reasonLabel || '').trim();
+  const reasonLabel = explicitReasonLabel || (/PHONE_RESEND_BANNED_NUMBER::|无法向此(?:电话|手机)号码发送短信|无法发送短信到此(?:电话|手机)号码|unable\s+to\s+send\s+(?:an?\s+)?(?:sms|text(?:\s+message)?)\s+to\s+(?:this|that)\s+(?:phone\s+)?number/i
     .test(errorMessage)
     ? '当前注册手机号无法接收短信'
     : (/与此(?:电话|手机)号码相关联的帐户已存在|account\s+associated\s+with\s+this\s+phone\s+number\s+already\s+exists/i
       .test(errorMessage)
       ? '注册手机号异常'
-      : '手机号/密码不匹配');
+      : '手机号/密码不匹配'));
   await addLog(
     `步骤 ${step}：检测到${reasonLabel}，准备丢弃当前注册手机号并回到步骤 1 重新开始（第 ${restartCount} 次重开）。${phoneSuffix}${emailSuffix}原因：${errorMessage}`,
     'warn'
@@ -8143,6 +8200,9 @@ async function restartSignupPhonePasswordMismatchAttemptFromStep(step, restartCo
   });
   if (shouldClearSignupPhoneRuntime) {
     await addLog(`步骤 ${step}：已清空本轮注册手机号与接码订单，下一次重开将重新获取号码。`, 'warn');
+  }
+  if (shouldClearSignupPhoneReuseRecords) {
+    await addLog(`步骤 ${step}：已移除当前注册手机号的复用记录，下一次重开会切换新手机号。`, 'warn');
   }
   if (Object.keys(restorePayload).length) {
     await setState(restorePayload);
@@ -11193,9 +11253,11 @@ async function runAutoSequenceFromStep(startStep, context = {}) {
         if (await restartCurrentStepAfterIdle(3, err)) {
           continue;
         }
-        if (isSignupPhonePasswordMismatchFailure(err)) {
+        if (resolvedSignupMethod === SIGNUP_METHOD_PHONE) {
           step4RestartCount += 1;
-          await restartSignupPhonePasswordMismatchAttemptFromStep(3, step4RestartCount, err);
+          await restartSignupPhonePasswordMismatchAttemptFromStep(3, step4RestartCount, err, {
+            reasonLabel: isSignupPhonePasswordMismatchFailure(err) ? '' : '手机号注册步骤 3 失败',
+          });
           currentStartStep = 1;
           continueCurrentAttempt = true;
           restartFromStep1WithCurrentEmail = true;
