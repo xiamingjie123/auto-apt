@@ -6,6 +6,7 @@
   const DEFAULT_BASE_URL = 'https://5sim.net';
   const DEFAULT_PRODUCT = 'openai';
   const DEFAULT_OPERATOR = 'any';
+  const DEFAULT_OPERATOR_MODE = 'fixed';
   const DEFAULT_COUNTRY_ID = 'vietnam';
   const DEFAULT_COUNTRY_LABEL = '越南 (Vietnam)';
   const DEFAULT_REQUEST_TIMEOUT_MS = 20000;
@@ -177,6 +178,26 @@
 
   function normalizeFiveSimOperator(value = '') {
     return String(value || '').trim().toLowerCase().replace(/[^a-z0-9_-]+/g, '') || DEFAULT_OPERATOR;
+  }
+
+  function normalizeFiveSimOperatorMode(value = '', fallback = DEFAULT_OPERATOR_MODE) {
+    const normalized = String(value || '').trim().toLowerCase();
+    if (normalized === 'auto') {
+      return 'auto';
+    }
+    if (normalized === 'fixed') {
+      return 'fixed';
+    }
+    return String(fallback || '').trim().toLowerCase() === 'auto' ? 'auto' : DEFAULT_OPERATOR_MODE;
+  }
+
+  function resolveOperatorConfig(state = {}) {
+    const mode = normalizeFiveSimOperatorMode(state?.fiveSimOperatorMode, DEFAULT_OPERATOR_MODE);
+    const fallbackOperator = mode === 'auto' ? DEFAULT_OPERATOR : '';
+    return {
+      mode,
+      operator: normalizeFiveSimOperator(state?.fiveSimOperator, fallbackOperator || DEFAULT_OPERATOR),
+    };
   }
 
   function normalizeFiveSimProduct(value = '') {
@@ -470,13 +491,15 @@
     });
   }
 
-  async function fetchProducts(state = {}, countryConfig = resolveCountryConfig(state), deps = {}) {
+  async function fetchProducts(state = {}, countryConfig = resolveCountryConfig(state), deps = {}, operatorOverride = '') {
     const config = {
       baseUrl: DEFAULT_BASE_URL,
       fetchImpl: deps.fetchImpl,
       requestTimeoutMs: deps.requestTimeoutMs || DEFAULT_REQUEST_TIMEOUT_MS,
     };
-    const operator = normalizeFiveSimOperator(state.fiveSimOperator);
+    const operator = operatorOverride
+      ? normalizeFiveSimOperator(operatorOverride)
+      : resolveOperatorConfig(state).operator;
     return fetchJson(
       config,
       `/v1/guest/products/${encodeURIComponent(normalizeFiveSimCountryId(countryConfig?.id))}/${encodeURIComponent(operator)}`,
@@ -487,53 +510,264 @@
     );
   }
 
+  function collectOperatorCatalog(payload, product, operatorMode, fixedOperator) {
+    const records = [];
+    const normalizedProduct = normalizeFiveSimProduct(product);
+    const normalizedFixedOperator = normalizeFiveSimOperator(fixedOperator);
+    if (!payload || typeof payload !== 'object') {
+      return records;
+    }
+
+    const appendRecord = (operatorId, data = {}) => {
+      const operator = normalizeFiveSimOperator(operatorId, '');
+      if (!operator) {
+        return;
+      }
+      if (operatorMode === 'fixed' && operator !== normalizedFixedOperator) {
+        return;
+      }
+      const cost = normalizePrice(data?.cost ?? data?.Price ?? data?.price);
+      const count = Number(data?.count ?? data?.Qty ?? data?.qty);
+      records.push({
+        operator,
+        cost,
+        count: Number.isFinite(count) ? count : 0,
+        inStock: !Number.isFinite(count) || count > 0,
+        raw: data,
+      });
+    };
+
+    Object.entries(payload || {}).forEach(([countryKey, countryRoot]) => {
+      if (!countryRoot || typeof countryRoot !== 'object' || Array.isArray(countryRoot)) {
+        return;
+      }
+      const normalizedCountryKey = normalizeFiveSimCountryId(countryKey, '');
+      if (normalizedCountryKey && normalizedCountryKey === normalizedProduct) {
+        Object.entries(countryRoot || {}).forEach(([operatorKey, operatorValue]) => {
+          if (!operatorValue || typeof operatorValue !== 'object' || Array.isArray(operatorValue)) {
+            return;
+          }
+          appendRecord(operatorKey, operatorValue);
+        });
+        return;
+      }
+      Object.entries(countryRoot || {}).forEach(([operatorKey, operatorValue]) => {
+        if (!operatorValue || typeof operatorValue !== 'object' || Array.isArray(operatorValue)) {
+          return;
+        }
+        if (operatorValue[normalizedProduct] && typeof operatorValue[normalizedProduct] === 'object') {
+          appendRecord(operatorKey, operatorValue[normalizedProduct]);
+        }
+      });
+    });
+
+    const deduped = new Map();
+    records.forEach((record) => {
+      const existing = deduped.get(record.operator);
+      if (!existing) {
+        deduped.set(record.operator, record);
+        return;
+      }
+      const existingCount = Number(existing.count);
+      const nextCount = Number(record.count);
+      const existingCost = normalizePrice(existing.cost);
+      const nextCost = normalizePrice(record.cost);
+      if (
+        (!existing.inStock && record.inStock)
+        || (
+          existing.inStock === record.inStock
+          && Number.isFinite(nextCount)
+          && (!Number.isFinite(existingCount) || nextCount > existingCount)
+        )
+        || (
+          existing.inStock === record.inStock
+          && existingCount === nextCount
+          && nextCost !== null
+          && (existingCost === null || nextCost < existingCost)
+        )
+      ) {
+        deduped.set(record.operator, record);
+      }
+    });
+
+    return Array.from(deduped.values());
+  }
+
+  function collectProductOperatorCatalog(productsPayload, product, operatorMode, fixedOperator) {
+    const normalizedProduct = normalizeFiveSimProduct(product);
+    const normalizedFixedOperator = normalizeFiveSimOperator(fixedOperator);
+    const records = [];
+    if (!productsPayload || typeof productsPayload !== 'object' || Array.isArray(productsPayload)) {
+      return records;
+    }
+
+    if (operatorMode === 'fixed') {
+      const requestedProduct = productsPayload?.[normalizedProduct];
+      const productPrice = normalizePrice(requestedProduct?.Price ?? requestedProduct?.price ?? requestedProduct?.cost);
+      const productQty = Number(requestedProduct?.Qty ?? requestedProduct?.qty ?? requestedProduct?.count);
+      if (productPrice !== null) {
+        records.push({
+          operator: normalizedFixedOperator,
+          cost: productPrice,
+          count: Number.isFinite(productQty) ? productQty : 0,
+          inStock: !Number.isFinite(productQty) || productQty > 0,
+          raw: requestedProduct,
+        });
+      }
+      return records;
+    }
+
+    // Auto mode relies on the detailed /guest/prices response for operator-level stock.
+
+    return records;
+  }
+
+  function buildOperatorPlan({ records = [], userLimit = null, operatorMode = DEFAULT_OPERATOR_MODE, fixedOperator = DEFAULT_OPERATOR }) {
+    const normalizedFixedOperator = normalizeFiveSimOperator(fixedOperator);
+    const normalizedMode = normalizeFiveSimOperatorMode(operatorMode);
+    if (normalizedMode === 'fixed') {
+      const fixedRecords = records.filter((record) => record.operator === normalizedFixedOperator);
+      const fixedInStock = fixedRecords.filter((record) => record.inStock && record.cost !== null);
+      const fixedWithinLimit = userLimit !== null
+        ? fixedInStock.filter((record) => Number(record.cost) <= Number(userLimit))
+        : fixedInStock;
+      const bestRecord = fixedWithinLimit
+        .slice()
+        .sort((left, right) => (
+          Number(left.cost) !== Number(right.cost)
+            ? Number(left.cost) - Number(right.cost)
+            : Number(right.count || 0) - Number(left.count || 0)
+        ))[0] || null;
+      return {
+        operators: bestRecord ? [{
+          operator: normalizedFixedOperator,
+          maxPrice: userLimit !== null ? userLimit : bestRecord.cost,
+          cost: bestRecord.cost,
+          count: bestRecord.count,
+        }] : [],
+        minCatalogPrice: fixedInStock.length ? Math.min(...fixedInStock.map((record) => Number(record.cost))) : null,
+        userLimit,
+      };
+    }
+
+    const inStockRecords = records
+      .filter((record) => record.inStock && record.cost !== null)
+      .filter((record) => userLimit === null || Number(record.cost) <= Number(userLimit))
+      .sort((left, right) => (
+        Number(left.cost) !== Number(right.cost)
+          ? Number(left.cost) - Number(right.cost)
+          : String(left.operator || '').localeCompare(String(right.operator || ''))
+      ));
+
+    const operatorPlans = [];
+    const seen = new Set();
+    inStockRecords.forEach((record) => {
+      if (seen.has(record.operator)) {
+        return;
+      }
+      seen.add(record.operator);
+      operatorPlans.push({
+        operator: record.operator,
+        maxPrice: record.cost,
+        cost: record.cost,
+        count: record.count,
+      });
+    });
+
+    if (operatorPlans.length === 0 && normalizedMode === 'auto') {
+      const dedupedRecords = records
+        .filter((record) => record.inStock && record.cost !== null)
+        .sort((left, right) => (
+          Number(left.cost) !== Number(right.cost)
+            ? Number(left.cost) - Number(right.cost)
+            : String(left.operator || '').localeCompare(String(right.operator || ''))
+        ));
+      dedupedRecords.forEach((record) => {
+        if (seen.has(record.operator)) {
+          return;
+        }
+        seen.add(record.operator);
+        operatorPlans.push({
+          operator: record.operator,
+          maxPrice: userLimit !== null ? userLimit : record.cost,
+          cost: record.cost,
+          count: record.count,
+        });
+      });
+    }
+
+    const minCatalogPrice = records
+      .filter((record) => record.cost !== null)
+      .map((record) => Number(record.cost))
+      .filter((value) => Number.isFinite(value) && value >= 0)
+      .sort((left, right) => left - right)[0] ?? null;
+
+    return {
+      operators: Array.from(
+        operatorPlans.reduce((map, entry) => {
+          if (!map.has(entry.operator)) {
+            map.set(entry.operator, entry);
+          }
+          return map;
+        }, new Map()).values()
+      ),
+      minCatalogPrice,
+      userLimit,
+    };
+  }
+
   async function resolvePricePlan(state = {}, countryConfig = resolveCountryConfig(state), deps = {}) {
     const userLimitText = normalizeFiveSimMaxPrice(state.fiveSimMaxPrice);
     const userLimit = userLimitText ? Number(userLimitText) : null;
     const product = resolveProduct(state);
-    let priceCandidates = [];
+    const operatorConfig = resolveOperatorConfig(state);
+    const operatorMode = operatorConfig.mode;
+    const fixedOperator = operatorConfig.operator;
+    let records = [];
+    let pricesPayload = null;
 
     try {
-      const productsPayload = await fetchProducts(state, countryConfig, deps);
-      const requestedProduct = productsPayload?.[product];
-      const productPrice = normalizePrice(requestedProduct?.Price ?? requestedProduct?.price ?? requestedProduct?.cost);
-      const productQty = Number(requestedProduct?.Qty ?? requestedProduct?.qty ?? requestedProduct?.count);
-      if (productPrice !== null && (!Number.isFinite(productQty) || productQty > 0)) {
-        priceCandidates.push(productPrice);
-      }
-    } catch (_) {
-      // Products endpoint is only used to find the buy-compatible operator price.
-    }
-
-    try {
-      const payload = await fetchPrices(state, countryConfig, deps);
-      priceCandidates = [
-        ...priceCandidates,
-        ...buildSortedUniquePriceCandidates(
-          collectPriceEntries(payload, [])
-            .filter((entry) => entry.inStock)
-            .map((entry) => entry.cost)
-        ),
+      const productsPayload = await fetchProducts(
+        state,
+        countryConfig,
+        deps,
+        operatorMode === 'fixed' ? fixedOperator : DEFAULT_OPERATOR
+      );
+      records = [
+        ...records,
+        ...collectProductOperatorCatalog(productsPayload, product, operatorMode, fixedOperator),
       ];
     } catch (_) {
-      // Best-effort lookup. Purchase can still be attempted without a catalog price.
-    }
-    priceCandidates = buildSortedUniquePriceCandidates(priceCandidates);
-
-    const minCatalogPrice = priceCandidates.length > 0 ? priceCandidates[0] : null;
-    if (userLimit !== null) {
-      const bounded = priceCandidates.filter((price) => price <= userLimit);
-      return {
-        prices: bounded.length > 0 ? [userLimit, ...bounded.filter((price) => price !== userLimit)] : [userLimit],
-        userLimit,
-        minCatalogPrice,
-      };
+      // Products endpoint is best-effort supplemental data.
     }
 
-    if (priceCandidates.length > 0) {
-      return { prices: priceCandidates, userLimit: null, minCatalogPrice };
+    try {
+      pricesPayload = await fetchPrices(state, countryConfig, deps);
+      records = [
+        ...records,
+        ...collectOperatorCatalog(pricesPayload, product, operatorMode, fixedOperator),
+      ];
+    } catch (_) {
+      // Best-effort lookup. Purchase can still be attempted without a catalog price in fixed mode.
     }
-    return { prices: [null], userLimit: null, minCatalogPrice: null };
+
+    const plan = buildOperatorPlan({
+      records,
+      userLimit,
+      operatorMode,
+      fixedOperator,
+    });
+
+    return {
+      operatorMode,
+      fixedOperator,
+      operators: plan.operators,
+      prices: plan.operators.map((entry) => entry.maxPrice),
+      userLimit,
+      minCatalogPrice: plan.minCatalogPrice,
+      rawRecords: records,
+      pricesPayload,
+    };
   }
 
   function normalizeActivation(record, fallback = {}) {
@@ -584,17 +818,13 @@
     return /not\s+enough\s+(?:user\s+)?balance|not\s+enough\s+rating|unauthorized|invalid\s+token|banned|bad\s+(?:country|operator)|no\s+product|server\s+offline/i.test(text);
   }
 
-  function assertMaxPriceCompatibleWithOperator(state = {}) {
-    const maxPrice = normalizeFiveSimMaxPrice(state.fiveSimMaxPrice);
-    const operator = normalizeFiveSimOperator(state.fiveSimOperator);
-    if (maxPrice && operator !== DEFAULT_OPERATOR) {
-      throw new Error('5sim maxPrice only works when operator is "any"; clear the price limit or switch operator to any before buying a number.');
-    }
+  function assertMaxPriceCompatibleWithOperator(_state = {}) {
+    // maxPrice is now applied by runtime operator filtering instead of requiring any.
   }
 
-  async function buyActivationWithPrice(state = {}, countryConfig, maxPrice, deps = {}) {
+  async function buyActivationWithPrice(state = {}, countryConfig, maxPrice, deps = {}, operatorOverride = '') {
     const config = resolveConfig(state, deps);
-    const operator = normalizeFiveSimOperator(state.fiveSimOperator);
+    const operator = operatorOverride ? normalizeFiveSimOperator(operatorOverride) : normalizeFiveSimOperator(state.fiveSimOperator);
     const product = resolveProduct(state);
     const query = {};
     if (maxPrice !== null && maxPrice !== undefined) {
@@ -688,9 +918,16 @@
       const countryConfig = attempt.countryConfig;
       const countryFailures = [];
       const pricePlan = attempt.pricePlan || await resolvePricePlan(state, countryConfig, deps);
-      for (const maxPrice of pricePlan.prices) {
+    if (pricePlan.operators.length === 0 && pricePlan.userLimit !== null) {
+        noNumbersByCountry.push(`${countryConfig.label}: no numbers within maxPrice=${pricePlan.userLimit}`);
+        continue;
+      }
+      const operatorPlans = pricePlan.operators.length > 0
+        ? pricePlan.operators
+        : [{ operator: resolveOperatorConfig(state).operator, maxPrice: null, cost: null, count: 0 }];
+      for (const operatorPlan of operatorPlans) {
         try {
-          const activation = await buyActivationWithPrice(state, countryConfig, maxPrice, deps);
+          const activation = await buyActivationWithPrice(state, countryConfig, operatorPlan.maxPrice, deps, operatorPlan.operator);
           if (activation) {
             return activation;
           }
@@ -893,6 +1130,7 @@
       normalizeCountryFallback: normalizeFiveSimCountryFallback,
       normalizeMaxPrice: normalizeFiveSimMaxPrice,
       normalizeOperator: normalizeFiveSimOperator,
+      normalizeOperatorMode: normalizeFiveSimOperatorMode,
       normalizeProduct: normalizeFiveSimProduct,
       resolveCountryCandidates,
       requestActivation: (state, options) => requestActivation(state, options, providerDeps),

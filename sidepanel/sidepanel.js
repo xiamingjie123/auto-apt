@@ -412,6 +412,7 @@ const rowPhoneSmsProviderOrderActions = document.getElementById('row-phone-sms-p
 const rowFiveSimApiKey = document.getElementById('row-five-sim-api-key');
 const rowFiveSimCountry = document.getElementById('row-five-sim-country');
 const rowFiveSimCountryFallback = document.getElementById('row-five-sim-country-fallback');
+const rowFiveSimOperatorMode = document.getElementById('row-five-sim-operator-mode');
 const rowFiveSimOperator = document.getElementById('row-five-sim-operator');
 const rowFiveSimProduct = document.getElementById('row-five-sim-product');
 const rowNexSmsApiKey = document.getElementById('row-nex-sms-api-key');
@@ -438,6 +439,7 @@ const inputHeroSmsApiKey = document.getElementById('input-hero-sms-api-key');
 const btnToggleHeroSmsApiKey = document.getElementById('btn-toggle-hero-sms-api-key');
 const inputFiveSimApiKey = document.getElementById('input-five-sim-api-key');
 const btnToggleFiveSimApiKey = document.getElementById('btn-toggle-five-sim-api-key');
+const selectFiveSimOperatorMode = document.getElementById('select-five-sim-operator-mode');
 const inputFiveSimOperator = document.getElementById('input-five-sim-operator');
 const inputFiveSimProduct = document.getElementById('input-five-sim-product');
 const inputNexSmsApiKey = document.getElementById('input-nex-sms-api-key');
@@ -3435,6 +3437,9 @@ function collectSettingsPayload() {
   const defaultNexSmsCountryOrder = typeof DEFAULT_NEX_SMS_COUNTRY_ORDER !== 'undefined'
     ? DEFAULT_NEX_SMS_COUNTRY_ORDER
     : [1];
+  const fiveSimOperatorModeValue = typeof selectFiveSimOperatorMode !== 'undefined' && selectFiveSimOperatorMode
+    ? normalizeFiveSimOperatorModeValue(selectFiveSimOperatorMode.value || latestState?.fiveSimOperatorMode || 'fixed')
+    : normalizeFiveSimOperatorModeValue(latestState?.fiveSimOperatorMode || 'fixed');
   const fiveSimOperatorValue = typeof inputFiveSimOperator !== 'undefined' && inputFiveSimOperator
     ? normalizeFiveSimOperator(inputFiveSimOperator.value || latestState?.fiveSimOperator)
     : normalizeFiveSimOperator(latestState?.fiveSimOperator);
@@ -3865,6 +3870,7 @@ function collectSettingsPayload() {
     heroSmsApiKey: heroSmsApiKeyValue,
     fiveSimApiKey: fiveSimApiKeyValue,
     fiveSimCountryOrder: fiveSimCountryOrderValue,
+    fiveSimOperatorMode: fiveSimOperatorModeValue,
     fiveSimOperator: fiveSimOperatorValue,
     fiveSimProduct: fiveSimProductValue,
     nexSmsApiKey: nexSmsApiKeyValue,
@@ -4050,6 +4056,16 @@ function normalizeFiveSimOperator(value = '', fallback = DEFAULT_FIVE_SIM_OPERAT
     return window.PhoneSmsFiveSimProvider.normalizeFiveSimOperator(value || fallback);
   }
   return String(value || '').trim().toLowerCase().replace(/[^a-z0-9_-]+/g, '') || fallback;
+}
+
+function normalizeFiveSimOperatorModeValue(value = '', fallback = 'fixed') {
+  if (typeof window !== 'undefined' && window.PhoneSmsFiveSimProvider?.normalizeFiveSimOperatorMode) {
+    return window.PhoneSmsFiveSimProvider.normalizeFiveSimOperatorMode(value || fallback, fallback);
+  }
+  const normalized = String(value || '').trim().toLowerCase();
+  if (normalized === 'auto') return 'auto';
+  if (normalized === 'fixed') return 'fixed';
+  return String(fallback || '').trim().toLowerCase() === 'auto' ? 'auto' : 'fixed';
 }
 
 function normalizeFiveSimMaxPriceValue(value = '') {
@@ -7149,6 +7165,12 @@ async function buildFiveSimPricePreviewLines(options = {}) {
   const product = normalizeFiveSimProductValue(
     inputFiveSimProduct?.value || latestState?.fiveSimProduct || DEFAULT_FIVE_SIM_PRODUCT
   );
+  const operatorMode = normalizeFiveSimOperatorModeValue(
+    selectFiveSimOperatorMode?.value || latestState?.fiveSimOperatorMode || 'fixed'
+  );
+  const fixedOperator = normalizeFiveSimOperator(
+    inputFiveSimOperator?.value || latestState?.fiveSimOperator || DEFAULT_FIVE_SIM_OPERATOR
+  );
   const maxPriceText = normalizeHeroSmsMaxPriceValue(inputHeroSmsMaxPrice?.value || '');
   const maxPrice = maxPriceText ? Number(maxPriceText) : null;
   const providerLabel = String(options?.providerLabel || '5sim').trim();
@@ -7195,11 +7217,123 @@ async function buildFiveSimPricePreviewLines(options = {}) {
     Object.values(payload).forEach((entry) => collectPriceEntries(entry, entries));
     return entries;
   };
+  const collectOperatorRecords = (payload, entries = [], context = {}) => {
+    if (Array.isArray(payload)) {
+      payload.forEach((entry) => collectOperatorRecords(entry, entries, context));
+      return entries;
+    }
+    if (!payload || typeof payload !== 'object') {
+      return entries;
+    }
+
+    const normalizedContextOperator = String(context.operator || '').trim().toLowerCase().replace(/[^a-z0-9_-]+/g, '');
+    Object.entries(payload).forEach(([key, value]) => {
+      const normalizedKey = normalizeFiveSimOperator(key);
+      if (!value || typeof value !== 'object') {
+        return;
+      }
+      if (normalizedKey && ('cost' in value || 'count' in value)) {
+        const cost = Number(value.cost);
+        const count = Number(value.count);
+        entries.push({
+          operator: normalizedKey,
+          cost: Number.isFinite(cost) && cost > 0 ? Math.round(cost * 10000) / 10000 : null,
+          count: Number.isFinite(count) ? Math.max(0, Math.floor(count)) : 0,
+        });
+        return;
+      }
+      if (value[product] && typeof value[product] === 'object') {
+        const productEntry = value[product];
+        const cost = Number(productEntry.cost);
+        const count = Number(productEntry.count);
+        entries.push({
+          operator: normalizedKey,
+          cost: Number.isFinite(cost) && cost > 0 ? Math.round(cost * 10000) / 10000 : null,
+          count: Number.isFinite(count) ? Math.max(0, Math.floor(count)) : 0,
+        });
+        return;
+      }
+      if (normalizedContextOperator && ('cost' in value || 'count' in value)) {
+        const cost = Number(value.cost);
+        const count = Number(value.count);
+        entries.push({
+          operator: normalizedContextOperator,
+          cost: Number.isFinite(cost) && cost > 0 ? Math.round(cost * 10000) / 10000 : null,
+          count: Number.isFinite(count) ? Math.max(0, Math.floor(count)) : 0,
+        });
+        return;
+      }
+      collectOperatorRecords(value, entries, { operator: normalizedKey || normalizedContextOperator });
+    });
+    return entries;
+  };
+  const buildAutoOperatorSummary = (records = []) => {
+    const inStock = records
+      .filter((entry) => Number.isFinite(entry.cost) && entry.cost > 0 && Number(entry.count) > 0)
+      .sort((left, right) => (
+        Number(left.cost) !== Number(right.cost)
+          ? Number(left.cost) - Number(right.cost)
+          : String(left.operator || '').localeCompare(String(right.operator || ''))
+      ));
+    if (!inStock.length) {
+      return null;
+    }
+    const deduped = [];
+    const seen = new Set();
+    inStock.forEach((entry) => {
+      const key = String(entry.operator || '').trim();
+      if (!key || seen.has(key)) {
+        return;
+      }
+      seen.add(key);
+      deduped.push(entry);
+    });
+    const withinLimit = Number.isFinite(maxPrice) && maxPrice > 0
+      ? deduped.filter((entry) => Number(entry.cost) <= maxPrice)
+      : deduped;
+    const candidates = withinLimit.length ? withinLimit : deduped;
+    if (!candidates.length) {
+      return null;
+    }
+    const chosen = candidates[0];
+    const operatorText = candidates
+      .slice(0, 6)
+      .map((entry) => `${entry.operator}=${formatHeroSmsPriceForPreview(entry.cost) || entry.cost}(x${entry.count})`)
+      .join(', ');
+    const overLimit = Number.isFinite(maxPrice) && maxPrice > 0 && Number(chosen.cost) > maxPrice;
+    const headline = overLimit
+      ? `最低可买 ${chosen.cost}（高于上限 ${maxPrice}）`
+      : `最低可买 ${chosen.cost}`;
+    return `${headline}；自动运营商：${operatorText}`;
+  };
+  const buildFixedOperatorSummary = async (countryCode, countryLabel) => {
+    const productsUrl = new URL(`https://5sim.net/v1/guest/products/${encodeURIComponent(countryCode)}/${encodeURIComponent(fixedOperator)}`);
+    const productsResponse = await fetch(productsUrl.toString(), { cache: 'no-store' });
+    const productsPayload = await productsResponse.json().catch(() => ({}));
+    if (!productsResponse.ok) {
+      return `${countryLabel}: 固定运营商 ${fixedOperator} 查询失败（HTTP ${productsResponse.status}）`;
+    }
+    const productEntry = productsPayload?.[product];
+    const qty = Number(productEntry?.Qty);
+    const price = Number(productEntry?.Price);
+    if (!Number.isFinite(qty) || qty <= 0 || !Number.isFinite(price) || price <= 0) {
+      return `${countryLabel}: 固定运营商 ${fixedOperator} 暂无可用号源`;
+    }
+    const normalizedPrice = Math.round(price * 10000) / 10000;
+    if (Number.isFinite(maxPrice) && maxPrice > 0 && normalizedPrice > maxPrice) {
+      return `${countryLabel}: 固定运营商 ${fixedOperator} 最低 ${normalizedPrice}（高于上限 ${maxPrice}）`;
+    }
+    return `${countryLabel}: 固定运营商 ${fixedOperator} 最低 ${normalizedPrice}(x${Math.max(0, Math.floor(qty))})`;
+  };
 
   const previews = [];
   for (const countryCode of countryCodes) {
     const countryLabel = getFiveSimCountryLabelByCode(countryCode) || countryCode;
     try {
+      if (operatorMode === 'fixed' && fixedOperator !== DEFAULT_FIVE_SIM_OPERATOR) {
+        previews.push(await buildFixedOperatorSummary(countryCode, countryLabel));
+        continue;
+      }
       const url = new URL('https://5sim.net/v1/guest/prices');
       url.searchParams.set('country', countryCode);
       url.searchParams.set('product', product);
@@ -7211,6 +7345,23 @@ async function buildFiveSimPricePreviewLines(options = {}) {
       }
       const productRoot = payload?.[product] || payload;
       const countryRoot = productRoot?.[countryCode] || productRoot;
+      const operatorRecords = collectOperatorRecords(countryRoot, []);
+      if (operatorMode === 'auto') {
+        const autoSummary = buildAutoOperatorSummary(operatorRecords);
+        if (autoSummary) {
+          previews.push(`${countryLabel}: ${autoSummary}`);
+          continue;
+        }
+        if (Number.isFinite(maxPrice) && maxPrice > 0 && operatorRecords.some((entry) => Number(entry.count) > 0)) {
+          const lowestAvailable = operatorRecords
+            .filter((entry) => Number.isFinite(entry.cost) && entry.cost > 0 && Number(entry.count) > 0)
+            .sort((left, right) => Number(left.cost) - Number(right.cost))[0];
+          if (lowestAvailable) {
+            previews.push(`${countryLabel}: 最低可买 ${lowestAvailable.cost}（高于上限 ${maxPrice}）`);
+            continue;
+          }
+        }
+      }
       const tierEntries = collectPriceEntries(countryRoot, [])
         .filter((entry) => Number.isFinite(entry.cost) && entry.cost > 0)
         .map((entry) => ({
@@ -7838,6 +7989,9 @@ function updatePhoneVerificationSettingsUI() {
   const heroProviderValue = typeof PHONE_SMS_PROVIDER_HERO !== 'undefined' ? PHONE_SMS_PROVIDER_HERO : 'hero-sms';
   const fiveSimProviderValue = typeof PHONE_SMS_PROVIDER_FIVE_SIM !== 'undefined' ? PHONE_SMS_PROVIDER_FIVE_SIM : '5sim';
   const nexSmsProviderValue = typeof PHONE_SMS_PROVIDER_NEXSMS !== 'undefined' ? PHONE_SMS_PROVIDER_NEXSMS : 'nexsms';
+  const fiveSimOperatorMode = normalizeFiveSimOperatorModeValue(
+    selectFiveSimOperatorMode?.value || latestState?.fiveSimOperatorMode || 'fixed'
+  );
   const providerOrderForDisplay = resolveNormalizedProviderOrderForRuntime(latestState || {});
   const provider = providerOrderForDisplay[0] || (
     typeof getSelectedPhoneSmsProvider === 'function'
@@ -7877,6 +8031,7 @@ function updatePhoneVerificationSettingsUI() {
     typeof rowFiveSimApiKey !== 'undefined' ? rowFiveSimApiKey : null,
     typeof rowFiveSimCountry !== 'undefined' ? rowFiveSimCountry : null,
     typeof rowFiveSimCountryFallback !== 'undefined' ? rowFiveSimCountryFallback : null,
+    typeof rowFiveSimOperatorMode !== 'undefined' ? rowFiveSimOperatorMode : null,
     typeof rowFiveSimProduct !== 'undefined' ? rowFiveSimProduct : null,
     typeof rowNexSmsApiKey !== 'undefined' ? rowNexSmsApiKey : null,
     typeof rowNexSmsCountry !== 'undefined' ? rowNexSmsCountry : null,
@@ -7906,14 +8061,15 @@ function updatePhoneVerificationSettingsUI() {
   if (rowFiveSimApiKey) rowFiveSimApiKey.style.display = showSettings && fiveSimProvider ? '' : 'none';
   if (rowFiveSimCountry) rowFiveSimCountry.style.display = showSettings && fiveSimProvider ? '' : 'none';
   if (rowFiveSimCountryFallback) rowFiveSimCountryFallback.style.display = showSettings && fiveSimProvider ? '' : 'none';
-  if (rowFiveSimOperator) rowFiveSimOperator.style.display = showSettings && fiveSimProvider ? '' : 'none';
+  if (rowFiveSimOperatorMode) rowFiveSimOperatorMode.style.display = showSettings && fiveSimProvider ? '' : 'none';
+  if (rowFiveSimOperator) rowFiveSimOperator.style.display = showSettings && fiveSimProvider && fiveSimOperatorMode === 'fixed' ? '' : 'none';
   if (rowFiveSimProduct) rowFiveSimProduct.style.display = showSettings && fiveSimProvider ? '' : 'none';
   if (rowNexSmsApiKey) rowNexSmsApiKey.style.display = showSettings && nexSmsProvider ? '' : 'none';
   if (rowNexSmsCountry) rowNexSmsCountry.style.display = showSettings && nexSmsProvider ? '' : 'none';
   if (rowNexSmsCountryFallback) rowNexSmsCountryFallback.style.display = showSettings && nexSmsProvider ? '' : 'none';
   if (rowNexSmsServiceCode) rowNexSmsServiceCode.style.display = showSettings && nexSmsProvider ? '' : 'none';
   if (rowFiveSimOperator) {
-    rowFiveSimOperator.style.display = showSettings && fiveSimProvider ? '' : 'none';
+    rowFiveSimOperator.style.display = showSettings && fiveSimProvider && fiveSimOperatorMode === 'fixed' ? '' : 'none';
   }
   if (typeof rowFreePhoneReuseEnabled !== 'undefined' && rowFreePhoneReuseEnabled) {
     rowFreePhoneReuseEnabled.style.display = showSettings ? '' : 'none';
@@ -9302,6 +9458,9 @@ function applySettingsState(state) {
   }
   if (typeof inputFiveSimApiKey !== 'undefined' && inputFiveSimApiKey) {
     inputFiveSimApiKey.value = String(state?.fiveSimApiKey || '');
+  }
+  if (typeof selectFiveSimOperatorMode !== 'undefined' && selectFiveSimOperatorMode) {
+    selectFiveSimOperatorMode.value = normalizeFiveSimOperatorModeValue(state?.fiveSimOperatorMode || 'fixed');
   }
   if (typeof inputFiveSimOperator !== 'undefined' && inputFiveSimOperator) {
     inputFiveSimOperator.value = typeof normalizeFiveSimOperatorValue === 'function'
@@ -13871,6 +14030,12 @@ inputFiveSimApiKey?.addEventListener('blur', () => {
   saveSettings({ silent: true }).catch(() => { });
 });
 
+selectFiveSimOperatorMode?.addEventListener('change', () => {
+  updatePhoneVerificationSettingsUI();
+  markSettingsDirty(true);
+  saveSettings({ silent: true }).catch(() => { });
+});
+
 inputFiveSimOperator?.addEventListener('input', () => {
   markSettingsDirty(true);
   scheduleSettingsAutoSave();
@@ -14852,6 +15017,10 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         applyFiveSimCountrySelection(
           Array.isArray(message.payload.fiveSimCountryOrder) ? message.payload.fiveSimCountryOrder : []
         );
+      }
+      if (message.payload.fiveSimOperatorMode !== undefined && selectFiveSimOperatorMode) {
+        selectFiveSimOperatorMode.value = normalizeFiveSimOperatorModeValue(message.payload.fiveSimOperatorMode, 'fixed');
+        updatePhoneVerificationSettingsUI();
       }
       if (message.payload.nexSmsCountryOrder !== undefined && typeof applyNexSmsCountrySelection === 'function') {
         applyNexSmsCountrySelection(

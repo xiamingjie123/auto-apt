@@ -379,13 +379,6 @@
       return Math.max(500, Math.min(30000, parsed));
     }
 
-    function assertFiveSimMaxPriceCompatibleWithOperator(operator, maxPriceLimit) {
-      const normalizedOperator = normalizeFiveSimCountryCode(operator, DEFAULT_FIVE_SIM_OPERATOR);
-      if (maxPriceLimit !== null && maxPriceLimit !== undefined && normalizedOperator !== DEFAULT_FIVE_SIM_OPERATOR) {
-        throw new Error('5sim maxPrice only works when operator is "any"; clear the price limit or switch operator to any before buying a number.');
-      }
-    }
-
     function normalizeHeroSmsPriceLimit(value) {
       if (value === undefined || value === null || String(value).trim() === '') {
         return null;
@@ -1776,7 +1769,6 @@
         const maxPriceLimit = configuredMaxPrice !== null
           ? configuredMaxPrice
           : normalizeHeroSmsPriceLimit(state.heroSmsMaxPrice);
-        assertFiveSimMaxPriceCompatibleWithOperator(operator, maxPriceLimit);
         return {
           provider,
           apiKey,

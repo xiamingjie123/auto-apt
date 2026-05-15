@@ -894,6 +894,7 @@ const PERSISTED_SETTING_DEFAULTS = {
   fiveSimCountryFallback: [],
   fiveSimCountryOrder: [...DEFAULT_FIVE_SIM_COUNTRY_ORDER],
   fiveSimMaxPrice: '',
+  fiveSimOperatorMode: 'fixed',
   fiveSimOperator: FIVE_SIM_OPERATOR,
   nexSmsApiKey: '',
   nexSmsCountryOrder: [...DEFAULT_NEX_SMS_COUNTRY_ORDER],
@@ -1677,6 +1678,21 @@ function normalizeFiveSimOperator(value = '', fallback = FIVE_SIM_OPERATOR) {
     return rootScope.PhoneSmsFiveSimProvider.normalizeFiveSimOperator(value || fallback);
   }
   return String(value || '').trim().toLowerCase().replace(/[^a-z0-9_-]+/g, '') || fallback;
+}
+
+function normalizeFiveSimOperatorMode(value = '', fallback = 'fixed') {
+  const rootScope = typeof self !== 'undefined' ? self : globalThis;
+  if (rootScope.PhoneSmsFiveSimProvider?.normalizeFiveSimOperatorMode) {
+    return rootScope.PhoneSmsFiveSimProvider.normalizeFiveSimOperatorMode(value || fallback, fallback);
+  }
+  const normalized = String(value || '').trim().toLowerCase();
+  if (normalized === 'auto') {
+    return 'auto';
+  }
+  if (normalized === 'fixed') {
+    return 'fixed';
+  }
+  return String(fallback || '').trim().toLowerCase() === 'auto' ? 'auto' : 'fixed';
 }
 
 function normalizeFiveSimMaxPrice(value = '') {
@@ -2845,6 +2861,8 @@ function normalizePersistentSettingValue(key, value) {
       return normalizeFiveSimCountryOrder(value);
     case 'fiveSimMaxPrice':
       return normalizeFiveSimMaxPrice(value);
+    case 'fiveSimOperatorMode':
+      return normalizeFiveSimOperatorMode(value);
     case 'fiveSimOperator':
       return normalizeFiveSimOperator(value);
     case 'nexSmsApiKey':
