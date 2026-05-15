@@ -125,6 +125,7 @@ function createFakeAddPhoneDom(config = {}) {
   };
 
   return {
+    countryButton,
     document,
     hiddenInputEvents,
     hiddenPhoneInput,
@@ -208,7 +209,7 @@ test('phone auth matches english HeroSMS country labels against localized add-ph
   }
 });
 
-test('phone auth keeps explicit international number and auto-selects country by dial code when label lookup fails', async () => {
+test('phone auth rejects add-phone submission when the provider country label cannot be matched explicitly', async () => {
   const originalDocument = global.document;
   const originalEvent = global.Event;
   const originalLocation = global.location;
@@ -260,20 +261,15 @@ test('phone auth keeps explicit international number and auto-selects country by
       waitForElement: async () => null,
     });
 
-    const result = await helpers.submitPhoneNumber({
-      countryLabel: 'Country #16',
-      phoneNumber: '+447999221823',
-    });
-
-    assert.equal(dom.select.value, 'GB');
-    assert.equal(dom.phoneInput.value, '7999221823');
-    assert.equal(dom.hiddenPhoneInput.value, '+447999221823');
-    assert.equal(dom.wasSubmitClicked(), true);
-    assert.deepStrictEqual(result, {
-      phoneVerificationPage: true,
-      displayedPhone: '',
-      url: 'https://auth.openai.com/phone-verification',
-    });
+    await assert.rejects(
+      () => helpers.submitPhoneNumber({
+        countryLabel: 'Country #16',
+        phoneNumber: '+447999221823',
+      }),
+      /Failed to select "Country #16" on the add-phone page\./
+    );
+    assert.equal(dom.select.value, 'CO');
+    assert.equal(dom.wasSubmitClicked(), false);
   } finally {
     global.document = originalDocument;
     global.Event = originalEvent;
@@ -282,7 +278,7 @@ test('phone auth keeps explicit international number and auto-selects country by
   }
 });
 
-test('phone auth can auto-select country by dial code even when number has no plus prefix', async () => {
+test('phone auth does not auto-select add-phone country by dial code when label is missing', async () => {
   const originalDocument = global.document;
   const originalEvent = global.Event;
   const originalLocation = global.location;
@@ -334,19 +330,120 @@ test('phone auth can auto-select country by dial code even when number has no pl
       waitForElement: async () => null,
     });
 
-    const result = await helpers.submitPhoneNumber({
-      countryLabel: 'Country #16',
-      phoneNumber: '447999221823',
+    await assert.rejects(
+      () => helpers.submitPhoneNumber({
+        countryLabel: '',
+        phoneNumber: '447999221823',
+      }),
+      /Failed to select "target country" on the add-phone page\./
+    );
+    assert.equal(dom.select.value, 'CO');
+    assert.equal(dom.wasSubmitClicked(), false);
+  } finally {
+    global.document = originalDocument;
+    global.Event = originalEvent;
+    global.location = originalLocation;
+    Intl.DisplayNames = OriginalDisplayNames;
+  }
+});
+
+test('phone auth switches the visible add-phone country control to Thailand when the hidden select alone is stale', async () => {
+  const originalDocument = global.document;
+  const originalEvent = global.Event;
+  const originalLocation = global.location;
+  const OriginalDisplayNames = Intl.DisplayNames;
+
+  let listboxOpen = false;
+  const dom = createFakeAddPhoneDom({
+    options: [
+      { value: 'JP', textContent: 'Japan (+81)', buttonText: 'Japan (+81)' },
+      { value: 'TH', textContent: 'Thailand (+66)', buttonText: 'Thailand (+66)' },
+    ],
+    selectedIndex: 0,
+  });
+  const jpOption = {
+    textContent: 'Japan (+81)',
+    getAttribute() {
+      return '';
+    },
+  };
+  const thOption = {
+    textContent: 'Thailand (+66)',
+    getAttribute() {
+      return '';
+    },
+  };
+  const originalQuerySelectorAll = dom.document.querySelectorAll?.bind(dom.document);
+  dom.document.querySelectorAll = (selector) => {
+    if (selector.includes('[role="listbox"]') || selector.includes('[role="option"]')) {
+      return listboxOpen ? [jpOption, thOption] : [];
+    }
+    return typeof originalQuerySelectorAll === 'function' ? originalQuerySelectorAll(selector) : [];
+  };
+
+  global.document = dom.document;
+  global.Event = class Event {
+    constructor(type) {
+      this.type = type;
+    }
+  };
+  global.location = { href: 'https://auth.openai.com/add-phone' };
+  Intl.DisplayNames = class DisplayNames {
+    of(regionCode) {
+      if (regionCode === 'TH') return 'Thailand';
+      if (regionCode === 'JP') return 'Japan';
+      return regionCode;
+    }
+  };
+
+  try {
+    const helpers = api.createPhoneAuthHelpers({
+      fillInput: (element, value) => {
+        element.value = value;
+      },
+      getActionText: () => '',
+      getPageTextSnapshot: () => '',
+      getVerificationErrorText: () => '',
+      humanPause: async () => {},
+      isActionEnabled: () => true,
+      isAddPhonePageReady: () => true,
+      isConsentReady: () => false,
+      isPhoneVerificationPageReady: () => dom.wasSubmitClicked(),
+      isVisibleElement: () => true,
+      simulateClick: (element) => {
+        if (element?.click) {
+          element.click();
+        }
+        if (element === jpOption) {
+          dom.select.value = 'JP';
+          listboxOpen = false;
+          return;
+        }
+        if (element === thOption) {
+          dom.select.value = 'TH';
+          listboxOpen = false;
+          return;
+        }
+        listboxOpen = true;
+      },
+      sleep: async () => {},
+      throwIfStopped: () => {},
+      waitForElement: async () => null,
     });
 
-    assert.equal(dom.select.value, 'GB');
-    assert.equal(dom.phoneInput.value, '7999221823');
-    assert.equal(dom.hiddenPhoneInput.value, '+447999221823');
+    const result = await helpers.submitPhoneNumber({
+      countryLabel: 'Thailand',
+      phoneNumber: '+66959916439',
+    });
+    assert.equal(dom.select.value, 'TH');
+    assert.equal(dom.countryButton.textContent, 'Thailand (+66)');
+    assert.equal(dom.phoneInput.value, '959916439');
+    assert.equal(dom.hiddenPhoneInput.value, '+66959916439');
     assert.equal(dom.wasSubmitClicked(), true);
     assert.deepStrictEqual(result, {
       phoneVerificationPage: true,
       displayedPhone: '',
-      url: 'https://auth.openai.com/phone-verification',
+      url: 'https://auth.openai.com/add-phone',
     });
   } finally {
     global.document = originalDocument;

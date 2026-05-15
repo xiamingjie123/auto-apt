@@ -182,6 +182,12 @@
         .trim();
     }
 
+    function getCountryButton() {
+      const form = getAddPhoneForm();
+      if (!form) return null;
+      return form.querySelector('button[aria-haspopup="listbox"]');
+    }
+
     function getDisplayedDialCode() {
       const buttonDialCode = extractDialCodeFromText(getCountryButtonText());
       if (buttonDialCode) {
@@ -197,6 +203,220 @@
       const visibleSpan = Array.from(fieldRoot.querySelectorAll('span'))
         .find((element) => isVisibleElement(element) && /^\d{1,4}$/.test(String(element.textContent || '').trim()));
       return String(visibleSpan?.textContent || '').trim();
+    }
+
+    function getCountryOptionDialCode(option) {
+      const direct = extractDialCodeFromText(getOptionLabel(option));
+      if (direct) {
+        return direct;
+      }
+      const labels = getCountryOptionMatchLabels(option);
+      for (const label of labels) {
+        const dialCode = extractDialCodeFromText(label);
+        if (dialCode) {
+          return dialCode;
+        }
+      }
+      return '';
+    }
+
+    function doesCountryTextMatchTarget(text, targetOption, countryLabel = '') {
+      const normalizedText = normalizeCountryLabel(text);
+      if (!normalizedText || !targetOption) {
+        return false;
+      }
+
+      const targetLabels = new Set();
+      const pushLabel = (value) => {
+        const normalized = normalizeCountryLabel(value);
+        if (normalized) {
+          targetLabels.add(normalized);
+        }
+      };
+
+      pushLabel(countryLabel);
+      pushLabel(getOptionLabel(targetOption));
+      getCountryOptionMatchLabels(targetOption).forEach(pushLabel);
+
+      for (const label of targetLabels) {
+        if (
+          normalizedText === label
+          || normalizedText.includes(label)
+          || label.includes(normalizedText)
+        ) {
+          return true;
+        }
+      }
+
+      const displayedDialCode = normalizePhoneDigits(extractDialCodeFromText(text));
+      const targetDialCode = normalizePhoneDigits(getCountryOptionDialCode(targetOption));
+      return Boolean(displayedDialCode && targetDialCode && displayedDialCode === targetDialCode);
+    }
+
+    function isCountrySelectionSynced(targetOption, countryLabel = '') {
+      const selectedOption = getSelectedCountryOption();
+      if (!selectedOption || !targetOption) {
+        return false;
+      }
+      if (!isSameCountryOption(selectedOption, targetOption)) {
+        return false;
+      }
+      const displayedText = getCountryButtonText();
+      if (displayedText) {
+        return doesCountryTextMatchTarget(displayedText, targetOption, countryLabel);
+      }
+      const displayedDialCode = normalizePhoneDigits(getDisplayedDialCode());
+      const targetDialCode = normalizePhoneDigits(getCountryOptionDialCode(targetOption));
+      if (displayedDialCode && targetDialCode) {
+        return displayedDialCode === targetDialCode;
+      }
+      return true;
+    }
+
+    function getVisibleCountryListboxOptions() {
+      const seen = new Set();
+      return Array.from(document.querySelectorAll('[role="listbox"] [role="option"], [role="option"]'))
+        .filter((option) => {
+          if (!option || seen.has(option)) {
+            return false;
+          }
+          seen.add(option);
+          return isVisibleElement(option);
+        });
+    }
+
+    function findCountryListboxOption(targetOption, countryLabel = '') {
+      const candidates = getVisibleCountryListboxOptions();
+      const byLabel = candidates.find((option) => (
+        doesCountryTextMatchTarget(getActionText(option), targetOption, countryLabel)
+      ));
+      if (byLabel) {
+        return byLabel;
+      }
+      const targetDialCode = normalizePhoneDigits(getCountryOptionDialCode(targetOption));
+      if (!targetDialCode) {
+        return null;
+      }
+      return candidates.find((option) => (
+        normalizePhoneDigits(extractDialCodeFromText(getActionText(option))) === targetDialCode
+      )) || null;
+    }
+
+    async function trySelectCountryListboxOption(targetOption, countryLabel = '') {
+      const button = getCountryButton();
+      if (!button || !targetOption) {
+        return false;
+      }
+
+      const getScrollableTargets = () => {
+        const seen = new Set();
+        const targets = [];
+        const pushTarget = (element) => {
+          if (!element || seen.has(element)) {
+            return;
+          }
+          seen.add(element);
+          const scrollHeight = Number(element.scrollHeight) || 0;
+          const clientHeight = Number(element.clientHeight) || 0;
+          if (scrollHeight > clientHeight + 2) {
+            targets.push(element);
+          }
+        };
+
+        getVisibleCountryListboxOptions().forEach((option) => {
+          let current = option.parentElement || null;
+          let depth = 0;
+          while (current && depth < 6) {
+            pushTarget(current);
+            if (current === document.body || current === document.documentElement) {
+              break;
+            }
+            current = current.parentElement || null;
+            depth += 1;
+          }
+        });
+
+        Array.from(document.querySelectorAll('[role="listbox"]'))
+          .filter((listbox) => isVisibleElement(listbox))
+          .forEach(pushTarget);
+
+        return targets;
+      };
+
+      const dispatchListboxScroll = (element) => {
+        if (!element || typeof element.dispatchEvent !== 'function') {
+          return;
+        }
+        try {
+          element.dispatchEvent(typeof Event === 'function'
+            ? new Event('scroll', { bubbles: true })
+            : { type: 'scroll' });
+        } catch {
+          try {
+            element.dispatchEvent({ type: 'scroll' });
+          } catch { }
+        }
+      };
+
+      const resetListboxScroll = () => {
+        getScrollableTargets().forEach((target) => {
+          if ((Number(target.scrollTop) || 0) > 0) {
+            target.scrollTop = 0;
+            dispatchListboxScroll(target);
+          }
+        });
+      };
+
+      const scrollListboxDown = () => {
+        let scrolled = false;
+        getScrollableTargets().forEach((target) => {
+          const before = Number(target.scrollTop) || 0;
+          const maxScrollTop = Math.max(0, (Number(target.scrollHeight) || 0) - (Number(target.clientHeight) || 0));
+          if (maxScrollTop <= before + 1) {
+            return;
+          }
+          const step = Math.max(360, Math.floor((Number(target.clientHeight) || 0) * 0.85));
+          target.scrollTop = Math.min(maxScrollTop, before + step);
+          dispatchListboxScroll(target);
+          scrolled = true;
+        });
+        return scrolled;
+      };
+
+      await performOperationWithDelay({ stepKey: 'phone-auth', kind: 'click', label: 'open-phone-country-listbox' }, async () => {
+        simulateClick(button);
+      });
+      await sleep(200);
+      resetListboxScroll();
+
+      const start = Date.now();
+      let reachedListEndAt = 0;
+      while (Date.now() - start < 8000) {
+        throwIfStopped();
+        const option = findCountryListboxOption(targetOption, countryLabel);
+        if (option) {
+          await performOperationWithDelay({ stepKey: 'phone-auth', kind: 'select', label: 'phone-country-listbox-option' }, async () => {
+            simulateClick(option);
+          });
+          await sleep(450);
+          if (isCountrySelectionSynced(targetOption, countryLabel)) {
+            return true;
+          }
+        }
+
+        if (!scrollListboxDown()) {
+          reachedListEndAt += 1;
+          if (reachedListEndAt >= 6) {
+            break;
+          }
+          await sleep(150);
+          continue;
+        }
+        reachedListEndAt = 0;
+        await sleep(220);
+      }
+
+      return false;
     }
 
     function toNationalPhoneNumber(value, dialCode) {
@@ -358,21 +578,25 @@
 
     async function ensureCountrySelected(countryLabel, phoneNumber = '') {
       const select = getCountrySelect();
-      if (!select) {
+      const button = getCountryButton();
+      if (!select && !button) {
         return false;
       }
 
-      const byLabel = findCountryOptionByLabel(countryLabel);
-      if (await trySelectCountryOption(select, byLabel)) {
+      const targetOption = findCountryOptionByLabel(countryLabel);
+      if (!targetOption) {
+        return false;
+      }
+
+      if (await trySelectCountryOption(select, targetOption) && isCountrySelectionSynced(targetOption, countryLabel)) {
         return true;
       }
 
-      const byPhoneNumber = findCountryOptionByPhoneNumber(phoneNumber);
-      if (await trySelectCountryOption(select, byPhoneNumber)) {
+      if (await trySelectCountryListboxOption(targetOption, countryLabel)) {
         return true;
       }
 
-      return Boolean(getSelectedCountryOption());
+      return isCountrySelectionSynced(targetOption, countryLabel);
     }
 
     function getAddPhoneSubmitButton() {
